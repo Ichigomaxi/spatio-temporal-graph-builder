@@ -1,1 +1,7 @@
-__pycache__/*
+# Ignore all Cachefolders
+__pycache__/
+*/__pycache__/*
+
+#Ignore the 
+plots/rotate_axes3d_sgskip.ipynb
+plots/rotate_axes3d_sgskip.py
