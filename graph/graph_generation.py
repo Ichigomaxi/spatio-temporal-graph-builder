@@ -56,3 +56,4 @@ class SPGraph(Graph):
         self._graph = defaultdict(set)
         self._directed = directed
         self.add_connections(connections)
+

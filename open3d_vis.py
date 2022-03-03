@@ -118,6 +118,11 @@ def _draw_bboxes(bbox3d,
         pcd.colors = o3d.utility.Vector3dVector(points_colors)
         vis.update_geometry(pcd)
 
+def _draw_lines():
+    #TODO
+    pass
+
+
 
 def show_pts_boxes(points,
                    bbox3d=None,
@@ -404,6 +409,15 @@ class Visualizer(object):
         _draw_bboxes(bbox3d, self.o3d_visualizer, self.points_colors, self.pcd,
                      bbox_color, points_in_box_color, self.rot_axis,
                      self.center_mode, self.mode)
+
+    def add_lines(self, pointpairs, edge_color=None):
+        '''
+        Add Lines that are defined by a set of point pairs
+        '''
+        if edge_color is None:
+            edge_color = (0.5, 0.5, 0.5)
+        _draw_lines()
+        
 
     def add_seg_mask(self, seg_mask_colors):
         """Add segmentation mask to visualizer via per-point colorization.
