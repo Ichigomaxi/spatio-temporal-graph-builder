@@ -5,3 +5,6 @@ __pycache__/
 #Ignore the 
 plots/rotate_axes3d_sgskip.ipynb
 plots/rotate_axes3d_sgskip.py
+
+# Ignore VS Code settings
+.vscode/settings.json
