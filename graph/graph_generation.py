@@ -89,6 +89,7 @@ class SpatioTemporalGraph(Graph):
                     if timestep == timeframe:
                         spatial_pointpairs.append([reference_node[1],idx])
         return spatial_pointpairs
+        
     def get_temporal_pointpairs(self):
         temporal_pairs_indices = []
         for reference_node in self._graph:

@@ -13,7 +13,6 @@ def get_box_centers(boxes : List[Box]):
     :param boxes :type: list of box objects
     :return: A numpy array of centers with corresponding indices as the input list
     """
-    # print("test")
     centers = []
     for box in boxes:
         centers.append(box.center)
@@ -35,3 +34,17 @@ def is_same_instance(nuscenes_handle:NuScenes, sample_annotation_token_i: str, s
     else:
         return False
 
+def filter_boxes(nuscenes_handle:NuScenes, boxes:List[Box], categoryQuery: str):
+    """
+    Returns a list of Bounding Boxes that belong to a specified class or subclass
+
+    :param nuscenes_handle: nuscenes wrapper that allows to look for instance token
+    :param sample_annotation_token_i: Unique sample_annotation identifier. Identifies Bounding Boxes
+    :param sample_annotation_token_j: Unique sample_annotation identifier. Identifies Bounding Boxes
+    """
+    filtered_boxes = []
+    for box in boxes:
+        category = nuscenes_handle.get('sample_annotation',box.token)['category_name']
+        if( category.find(categoryQuery) != -1 ):
+            filtered_boxes.append(box)
+    return filtered_boxes
