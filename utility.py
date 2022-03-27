@@ -19,7 +19,9 @@ def get_box_centers(boxes : List[Box]):
     centers = np.array(centers)
     return centers
 
-def is_same_instance(nuscenes_handle:NuScenes, sample_annotation_token_i: str, sample_annotation_token_j: str)-> Boolean:
+def is_same_instance(nuscenes_handle:NuScenes, \
+                    sample_annotation_token_i: str,\
+                    sample_annotation_token_j: str) -> Boolean:
     """
     Compares 3D bounding boxes if they belong to the same object instance 
     :param nuscenes_handle: nuscenes wrapper that allows to look for instance token
