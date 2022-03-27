@@ -16,3 +16,10 @@ pip install nuscenes-devkit
 
 2)
 Install open3D version 0.14.1+
+
+3)
+Install plotly/dash
+pip install dash
+pip install jupyter-dash
+pip install pandas
+

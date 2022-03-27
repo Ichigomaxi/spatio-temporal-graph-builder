@@ -7,6 +7,7 @@ from utility import get_box_centers, filter_boxes
 
 from utility import is_same_instance
 from nuscenes.utils.data_classes import Box
+from utils.nuscenes_helper_functions import is_valid_box
 
 import numpy as np
 
@@ -49,26 +50,32 @@ def generate_flow_labels(nuscenes_handle:NuScenes,
     flow_labels: List(n) List of Flow parameters/labels
     '''
 
-    def get_box(car_box_list, center):
-        for box_list in car_box_list:
-            for box in box_list:
-                if np.equal(box.center,center).all():
-                    return box
-        print('box not found!')
-        return 0
-                    
+    # def get_box(car_box_list, center):
+        
+    #     for box_list in car_box_list:
+    #         for box in box_list:
+    #             if np.equal(box.center,center)==[True,True,False]:
+    #                 return box
+    #     print('box not found!')
+    #     return 0
     
     flow_labels = []
     for point_pair in temporal_pointpairs:
         node_a_center = centers[point_pair[0]]
         node_b_center = centers[point_pair[1]]
-        print(node_a_center)
-        print(node_b_center)
+        # print(node_a_center)
+        # print(node_b_center)
 
-        node_a_box = get_box(car_box_list, node_a_center)
-        node_b_box = get_box(car_box_list, node_b_center)
-        if(node_a_box == -1 | node_b_box == -1):
-            print('box not found!')
+        # node_a_box = get_box(car_box_list, node_a_center)
+        # node_b_box = get_box(car_box_list, node_b_center)
+        
+
+        node_a_box = car_box_list[point_pair[0]]
+        node_b_box = car_box_list[point_pair[1]]
+
+        if not (is_valid_box(node_a_box,node_a_center) and is_valid_box(node_b_box,node_b_center)):
+            print('invalid boxes!!!')
+            raise ValueError('A box does not correspond to a selected center')
 
         str_node_a_sample_annotation = node_a_box.token
         str_node_b_sample_annotation = node_b_box.token
@@ -78,4 +85,6 @@ def generate_flow_labels(nuscenes_handle:NuScenes,
             flow_labels.append(1)
         else:
             flow_labels.append(0)
+
+    return flow_labels
     

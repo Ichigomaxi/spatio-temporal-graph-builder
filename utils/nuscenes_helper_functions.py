@@ -1,5 +1,6 @@
 from typing import List
 from nuscenes.nuscenes import NuScenes
+import numpy as np
 
 def get_all_samples_2_list(nusc:NuScenes, scene_token:str) -> List[str]:
     # init List
@@ -76,3 +77,15 @@ def get_filtered_instances_for_one_scene(nusc:NuScenes, scene_token:str, categor
         
     
     return instance_tokens
+
+def is_valid_box(box , center, num_frames = 3, spatial_shift_timeframes = 20):
+    offset = 0
+    for frame_i in range(num_frames):
+        reference_center = box.center + np.array([0,0,offset])
+        # if reference_center.base is not None:
+        #     print('Base:',reference_center.base)
+        if np.equal(reference_center ,center).all():
+            return True
+        offset += spatial_shift_timeframes
+    
+    return False
