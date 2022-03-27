@@ -1,6 +1,7 @@
 # Ignore all Cachefolders
 __pycache__/
 */__pycache__/*
+.ipynb_checkpoints/*
 
 #Ignore the 
 plots/rotate_axes3d_sgskip.ipynb
@@ -8,3 +9,5 @@ plots/rotate_axes3d_sgskip.py
 
 # Ignore VS Code settings
 .vscode/settings.json
+demo_logs/pytorch/small_scale/events*
+demo_logs/pytorch/small_scale/plugins/Open3D/*
