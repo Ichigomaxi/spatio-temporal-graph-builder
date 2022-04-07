@@ -11,3 +11,4 @@ plots/rotate_axes3d_sgskip.py
 .vscode/settings.json
 demo_logs/pytorch/small_scale/events*
 demo_logs/pytorch/small_scale/plugins/Open3D/*
+.vscode/launch.json
