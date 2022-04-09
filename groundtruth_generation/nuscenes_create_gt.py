@@ -35,7 +35,7 @@ def convert_into_one_hot_encoding():
 
 def generate_flow_labels(nuscenes_handle:NuScenes,
                         temporal_pointpairs:List[List[int]],\
-                         car_box_list:List[List[Box]],centers):
+                         car_box_list:List[List[Box]], centers:np.ndarray):
     '''
     Returns a set of flow parameters corresponding to the temporal connections. 
     A Parameter is 1 if the connected nodes belong to the same object instance.
@@ -87,4 +87,3 @@ def generate_flow_labels(nuscenes_handle:NuScenes,
             flow_labels.append(0)
 
     return flow_labels
-    
