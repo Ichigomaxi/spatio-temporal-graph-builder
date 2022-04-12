@@ -1,15 +1,21 @@
+from enum import Enum, IntEnum
 from typing import List
-from unittest import TestProgram
+
+import numpy as np
 from cv2 import writeOpticalFlow
 from matplotlib.pyplot import box
 from nuscenes.nuscenes import NuScenes
-from utility import get_box_centers, filter_boxes
-
-from utility import is_same_instance
 from nuscenes.utils.data_classes import Box
+from torch import affine_grid_generator
+from zmq import device
+from utility import filter_boxes, get_box_centers, is_same_instance
 from utils.nuscenes_helper_functions import is_valid_box
+import torch
 
-import numpy as np
+class edge_label_classes(IntEnum):
+    different_instance = 0
+    same_instance = 1
+    new_instance = 2
 
 def get_filtered_centers(nusc:NuScenes,sample_token:str):
     sample = nusc.get('sample', sample_token)
@@ -30,8 +36,51 @@ def assign_track_ids():
     pass
 
 #Convert TrackIds into one_hot-encoded vector
-def convert_into_one_hot_encoding():
-    pass
+def convert_into_one_hot_encoding(
+        label:edge_label_classes, 
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        ):
+
+    label_one_hot = torch.zeros(len(edge_label_classes), dtype=torch.uint8, device = device)
+
+    if( label == edge_label_classes.different_instance ):
+        label_one_hot[edge_label_classes.different_instance] = 1
+    elif( label== edge_label_classes.same_instance ):
+        label_one_hot[edge_label_classes.same_instance] = 1
+    elif( label== edge_label_classes.new_instance ):
+        label_one_hot[edge_label_classes.new_instance] = 1
+
+    return label_one_hot
+
+def generate_edge_label_one_hot(nuscenes_handle:NuScenes,
+            sample_annotation_token_a:str,
+            sample_annotation_token_b:str,
+            new_instances_token_list:List[str] = [],
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+
+    label = None
+    if (is_same_instance(nuscenes_handle,sample_annotation_token_a \
+                                ,sample_annotation_token_b)):
+        label = edge_label_classes.same_instance
+    elif (is_new_instance_in_graph_scene(sample_annotation_token_a,
+                sample_annotation_token_b, new_instances_token_list)):
+        label = edge_label_classes.new_instance
+    else:
+        label = edge_label_classes.different_instance
+
+    return convert_into_one_hot_encoding(label)
+
+def is_new_instance_in_graph_scene(
+            sample_annotation_token_a:str,
+            sample_annotation_token_b:str,
+            new_instances_token_list:List[str]):
+    if (sample_annotation_token_a in new_instances_token_list)\
+            or (sample_annotation_token_b in new_instances_token_list):
+        return True
+    else:
+        return False
+
+
 
 def generate_flow_labels(nuscenes_handle:NuScenes,
                         temporal_pointpairs:List[List[int]],\
