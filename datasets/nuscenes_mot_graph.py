@@ -413,34 +413,9 @@ class NuscenesMotGraph(object):
         """
         Constructs the entire Graph object to serve as input to the MPN, and stores it in self.graph_obj,
         """
-
-        # # Load Center points for features from LIDAR pointcloud frame of reference
-        # sensor = 'LIDAR_TOP'
-        # sample_token = self.start_frame
-            
-        # boxes_dict= {}
-        # for i in range(self.max_frame_dist):
-        #     # Append new boxes
-        #     sample = self.nuscenes_handle.get('sample', sample_token)
-        #     lidar_top_data = self.nuscenes_handle.get('sample_data', sample['data'][sensor])
-        #     _, boxes, _= self.nuscenes_handle.get_sample_data(lidar_top_data['token'], selected_anntokens=None, use_flat_vehicle_coordinates =False)
-        #     boxes_dict[i] = boxes
-
-        #     #Move to next sample
-        #     sample_token = sample["next"]
-
-        # centers_dict = {} 
-        # for box_timeframe, box_list in boxes_dict.items():
-
-        #     car_boxes = filter_boxes(self.nuscenes_handle, boxes= box_list, categoryQuery= 'vehicle.car')
-        #     centers = get_box_centers(car_boxes)
-        #     centers_dict[box_timeframe] = (car_boxes,centers)
-
         centers_dict = self.graph_dataframe["centers_dict"]
         # Determine graph connectivity (i.e. edges) and compute edge features
         edge_ixs, edge_feats_dict = self._get_edge_ixs(centers_dict)
-        
-        
 
         # Prepare Inputs/ bring into apropiate shape to generate graph/object
         centers = centers_dict["all"]
