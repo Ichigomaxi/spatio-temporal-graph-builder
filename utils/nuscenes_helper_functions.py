@@ -1,6 +1,7 @@
 from typing import List
 from nuscenes.nuscenes import NuScenes
 import numpy as np
+import torch
 
 def get_all_samples_2_list(nusc:NuScenes, scene_token:str) -> List[str]:
     # init List
@@ -78,13 +79,25 @@ def get_filtered_instances_for_one_scene(nusc:NuScenes, scene_token:str, categor
     
     return instance_tokens
 
-def is_valid_box(box , center, num_frames = 3, spatial_shift_timeframes = 20):
+def is_valid_box(box , center:np.ndarray,spatial_shift_timeframes, num_frames = 3 ):
     offset = 0
     for frame_i in range(num_frames):
         reference_center = box.center + np.array([0,0,offset])
-        # if reference_center.base is not None:
-        #     print('Base:',reference_center.base)
+        
         if np.equal(reference_center ,center).all():
+            return True
+        offset += spatial_shift_timeframes
+    
+    return False
+
+def is_valid_box_torch(box , center:torch.Tensor,spatial_shift_timeframes:int, device:torch.device, num_frames = 3 ):
+    offset = 0
+    t_box_center = torch.from_numpy(box.center).to(device)
+    center = center.to(device)
+    for frame_i in range(num_frames):
+        reference_center = t_box_center + torch.tensor([0,0,offset]).to(device)
+
+        if torch.equal(reference_center ,center):
             return True
         offset += spatial_shift_timeframes
     
