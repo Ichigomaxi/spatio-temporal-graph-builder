@@ -6,6 +6,7 @@ from typing import Dict
 from sklearn.neighbors import NearestNeighbors
 
 from matplotlib.pyplot import axis
+from sklearn.utils import deprecated
 from utility import get_box_centers
 
 import numpy as np
@@ -124,6 +125,7 @@ class SpatioTemporalGraph(Graph):
         else:
             return AttributeError
 
+@deprecated
 def add_general_centers(centers_dict,spatial_shift_timeframes):
 
     if len(centers_dict) == 3:
@@ -144,9 +146,82 @@ def add_general_centers(centers_dict,spatial_shift_timeframes):
         centers = np.append(centers, centers2, axis=0)
 
         centers_dict["all"] = centers
-        
 
-def get_and_compute_temporal_edge_indices( centers_dict:Dict,\
+def transform_knn_matrix_2_neighborhood_list(t_knn_matrix:torch.Tensor,
+            node_list_length:int) -> torch.Tensor:
+    '''
+    Returns indices of edges in reference to the stacked center indices.
+    Arg: 
+    t_knn_matrix: torch.Tensor(num_edges_i, knn_parameter== num_neighbors)
+    node_list: torch.Tensor(num_edges_i, num_features)
+    Returns:
+    t_spatial_pointpairs:torch interger tensor (num_spatial_edges,2)
+    '''
+    neighborhood_list = []
+    for reference_edge_index in range(node_list_length):
+        # tensors of shape (1 x knn)
+        t_current_neighbor_indices = t_knn_matrix[reference_edge_index]
+        t_reference_edge_index = torch.ones_like(t_current_neighbor_indices) * reference_edge_index
+
+        t_edge_indices_pairs = torch.stack([t_reference_edge_index,t_current_neighbor_indices]).T
+
+        neighborhood_list.append(t_edge_indices_pairs)
+
+    t_neighborhood_list = torch.cat(neighborhood_list, dim = 0)
+    return t_neighborhood_list
+
+def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
+        knn_param:int,
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        )-> torch.Tensor:
+    '''
+    Returns indices of edges in reference to the stacked center indices.
+    Returns:
+    t_spatial_pointpairs:torch interger tensor (num_spatial_edges,2)
+    '''
+    #Init indices list
+    spatial_indices = []
+
+    # Get individual centers
+    _, centers0 = graph_dataframe["centers_dict"][0]
+    _, centers1 = graph_dataframe["centers_dict"][1]
+    _, centers2 = graph_dataframe["centers_dict"][2]
+
+    # Frame t0
+    #Compute K nearest neighbors
+    nbrs_0 = NearestNeighbors(n_neighbors=knn_param, algorithm='ball_tree').fit(centers0)
+    _, spatial_indices_0 = nbrs_0.kneighbors(centers0)
+
+    t_spatial_indices_0 = torch.from_numpy(spatial_indices_0).to(device)
+    num_spatial_nodes_0 = centers0.shape[0]
+    t_edge_indices_0 = transform_knn_matrix_2_neighborhood_list(t_spatial_indices_0, num_spatial_nodes_0).to(device)
+    spatial_indices.append(t_edge_indices_0)
+
+    #Frame t1
+    nbrs_1 = NearestNeighbors(n_neighbors=knn_param, algorithm='ball_tree').fit(centers1)
+    _, spatial_indices_1 = nbrs_1.kneighbors(centers1)
+
+    t_spatial_indices_1 = torch.from_numpy(spatial_indices_1).to(device)
+    num_spatial_nodes_1 = centers1.shape[0]
+    t_edge_indices_1 = transform_knn_matrix_2_neighborhood_list(t_spatial_indices_1, num_spatial_nodes_1).to(device)
+    t_edge_indices_1 += (num_spatial_nodes_0)
+    spatial_indices.append(t_edge_indices_1)
+
+    #Frame t2
+    nbrs_2 = NearestNeighbors(n_neighbors=knn_param, algorithm='ball_tree').fit(centers2)
+    _, spatial_indices_2 = nbrs_2.kneighbors(centers2)
+
+    t_spatial_indices_2 = torch.from_numpy(spatial_indices_2).to(device)
+    num_spatial_nodes_2 = centers2.shape[0]
+    t_edge_indices_2 = transform_knn_matrix_2_neighborhood_list(t_spatial_indices_2, num_spatial_nodes_2).to(device)
+    t_edge_indices_2 += (num_spatial_nodes_1) + (num_spatial_nodes_0)
+    spatial_indices.append(t_edge_indices_2)
+
+    t_spatial_indices = torch.cat(spatial_indices, dim=0).to(device)
+
+    return t_spatial_indices
+
+def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
         knn_param:int,
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )-> torch.Tensor:
@@ -159,12 +234,13 @@ def get_and_compute_temporal_edge_indices( centers_dict:Dict,\
     temporal_pointpairs = []
 
     # print(centers_dict)
+    # Get individual centers
+    _, centers0 = graph_dataframe["centers_dict"][0]
+    _, centers1 = graph_dataframe["centers_dict"][1]
+    _, centers2 = graph_dataframe["centers_dict"][2]
 
-    _,centers0 =  centers_dict[0]
-    _ ,centers1 =  centers_dict[1]
-    _ ,centers2 =  centers_dict[2]
-
-    centers = centers_dict["all"]
+    # centers = centers_dict["all"]
+    centers = graph_dataframe["centers_list_all"].cpu().numpy()
 
     for i in range(len(centers0)):
         center = centers0[i]
@@ -229,7 +305,7 @@ def get_and_compute_temporal_edge_indices( centers_dict:Dict,\
     
     return t_temporal_pointpairs
 
-def compute_edge_feats_dict(edge_ixs,centers_dict, 
+def compute_edge_feats_dict(edge_ixs, graph_dataframe:Dict, 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
     """
     Computes a dictionary of edge features among pairs of detections
@@ -244,7 +320,7 @@ def compute_edge_feats_dict(edge_ixs,centers_dict,
     # device = torch.device("cuda" if torch.cuda.is_available() and use_cuda else "cpu")
 
     relative_vectors = []
-    centers = centers_dict["all"]
+    centers = graph_dataframe["centers_list_all"].cpu().numpy()
     for edge in edge_ixs:
         reference_ind = edge[0]
         neighbor_ind = edge[1]

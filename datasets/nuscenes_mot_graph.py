@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from graph.graph_generation import (add_general_centers,
                                     compute_edge_feats_dict,
-                                    get_and_compute_temporal_edge_indices)
+                                    get_and_compute_temporal_edge_indices, get_and_compute_spatial_edge_indices)
 from groundtruth_generation.nuscenes_create_gt import (
     generate_edge_label_one_hot, generate_flow_labels)
 from nuscenes import NuScenes
@@ -25,6 +25,7 @@ class NuscenesMotGraph(object):
 
     SPATIAL_SHIFT_TIMEFRAMES = 20
     KNN_PARAM_TEMPORAL = 3
+    KNN_PARAM_SPATIAL = 3
 
     def __init__(self,nuscenes_handle:NuScenes, start_frame:str , max_frame_dist:int = 3,
                     filterBoxes_categoryQuery:str = None,
@@ -119,32 +120,37 @@ class NuscenesMotGraph(object):
         return graph_dataframe
 
 
-    def _get_edge_ixs(self, centers_dict):
+    def _get_edge_ixs(self,):
         """
         Constructs graph edges by taking pairs of nodes with valid time connections (not in same frame, not too far
         apart in time) and perhaps taking KNNs according to reid embeddings.
         Args:
-            centers_dict: torch.tensor with shape (num_nodes, reid_embeds_dim)
-
         Returns:
             edge_ixs: torch.tensor withs shape (2, num_edges) describes indices of edges, 
             edge_feats_dict: dict with edge features, mainly torch.Tensors e.g (num_edges, num_edge_features)
         """
 
-        add_general_centers(centers_dict,\
-                    NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES)
+        # add_general_centers(centers_dict,\
+        #             NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES)
         # print(centers_dict)
 
-        edge_ixs = get_and_compute_temporal_edge_indices(centers_dict,\
-                    NuscenesMotGraph.KNN_PARAM_TEMPORAL, device= self.device)
+        t_spatial_edge_ixs = get_and_compute_spatial_edge_indices(
+                    self.graph_dataframe,
+                    NuscenesMotGraph.KNN_PARAM_SPATIAL,
+                    device= self.device)
+
+        t_temporal_edge_ixs = get_and_compute_temporal_edge_indices(
+                    self.graph_dataframe,
+                    NuscenesMotGraph.KNN_PARAM_TEMPORAL,
+                    device= self.device)
 
         edge_feats_dict = None
-        
-        
-        # print(centers_dict.keys())
 
-        edge_feats_dict = compute_edge_feats_dict(edge_ixs= edge_ixs,
-                            centers_dict=centers_dict, device=self.device)
+        edge_feats_dict = compute_edge_feats_dict(edge_ixs= t_temporal_edge_ixs,
+                            graph_dataframe=self.graph_dataframe , device=self.device)
+
+        #TODO Join temporal and spatial edges but also generate a mask to filter them
+        edge_ixs = t_temporal_edge_ixs
 
         return edge_ixs, edge_feats_dict
 
@@ -414,13 +420,13 @@ class NuscenesMotGraph(object):
         """
         Constructs the entire Graph object to serve as input to the MPN, and stores it in self.graph_obj,
         """
-        centers_dict = self.graph_dataframe["centers_dict"]
         # Determine graph connectivity (i.e. edges) and compute edge features
-        edge_ixs, edge_feats_dict = self._get_edge_ixs(centers_dict)
+        edge_ixs, edge_feats_dict = self._get_edge_ixs()
 
         # Prepare Inputs/ bring into apropiate shape to generate graph/object
-        centers = centers_dict["all"]
-        t_centers = torch.from_numpy(centers).to(self.device)
+        # centers = centers_dict["all"]
+        # t_centers = torch.from_numpy(centers).to(self.device)
+        t_centers = self.graph_dataframe["centers_list_all"]
 
         edge_feats = edge_feats_dict['relative_vectors']
 
