@@ -56,7 +56,8 @@ def generate_edge_label_one_hot(nuscenes_handle:NuScenes,
             sample_annotation_token_a:str,
             sample_annotation_token_b:str,
             new_instances_token_list:List[str] = [],
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu"))->torch.Tensor:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            )->torch.Tensor:
 
     label = None
     if (is_same_instance(nuscenes_handle,sample_annotation_token_a \
@@ -68,7 +69,7 @@ def generate_edge_label_one_hot(nuscenes_handle:NuScenes,
     else:
         label = edge_label_classes.different_instance
 
-    return convert_into_one_hot_encoding(label)
+    return convert_into_one_hot_encoding(label, device=device)
 
 def is_new_instance_in_graph_scene(
             nuscenes_handle:NuScenes,

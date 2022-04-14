@@ -147,14 +147,14 @@ def add_general_centers(centers_dict,spatial_shift_timeframes):
         
 
 def get_and_compute_temporal_edge_indices( centers_dict:Dict,\
-    knn_param:int, use_cuda:bool=True)-> torch.Tensor:
+        knn_param:int,
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        )-> torch.Tensor:
     '''
     Returns indices of edges in reference to the stacked center indices.
     Returns:
     t_temporal_pointpairs:torch interger tensor (num_edges,2)
     '''
-
-    device = torch.device("cuda" if torch.cuda.is_available() and use_cuda else "cpu")
 
     temporal_pointpairs = []
 
@@ -164,17 +164,6 @@ def get_and_compute_temporal_edge_indices( centers_dict:Dict,\
     _ ,centers1 =  centers_dict[1]
     _ ,centers2 =  centers_dict[2]
 
-    # # Boxes 1 must be translated up by l meters
-    # centers1 += np.array([0,0,spatial_shift_timeframes])
-
-    # # Boxes 2 must be translated up by 2*l meters
-    # centers2 += np.array([0,0,2*spatial_shift_timeframes])
-
-    # # Add all centroids into one array
-    # centers = np.empty((0,3))
-    # centers = np.append(centers, centers0, axis=0)
-    # centers = np.append(centers, centers1, axis=0)
-    # centers = np.append(centers, centers2, axis=0)
     centers = centers_dict["all"]
 
     for i in range(len(centers0)):
@@ -240,7 +229,8 @@ def get_and_compute_temporal_edge_indices( centers_dict:Dict,\
     
     return t_temporal_pointpairs
 
-def compute_edge_feats_dict(edge_ixs,centers_dict, use_cuda):
+def compute_edge_feats_dict(edge_ixs,centers_dict, 
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
     """
     Computes a dictionary of edge features among pairs of detections
     Args:
@@ -251,7 +241,7 @@ def compute_edge_feats_dict(edge_ixs,centers_dict, use_cuda):
         with vals of that attribute for each edge.
 
     """
-    device = torch.device("cuda" if torch.cuda.is_available() and use_cuda else "cpu")
+    # device = torch.device("cuda" if torch.cuda.is_available() and use_cuda else "cpu")
 
     relative_vectors = []
     centers = centers_dict["all"]

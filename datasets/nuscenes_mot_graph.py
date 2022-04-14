@@ -130,14 +130,13 @@ class NuscenesMotGraph(object):
             edge_ixs: torch.tensor withs shape (2, num_edges) describes indices of edges, 
             edge_feats_dict: dict with edge features, mainly torch.Tensors e.g (num_edges, num_edge_features)
         """
-        use_cuda = True
 
         add_general_centers(centers_dict,\
                     NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES)
         # print(centers_dict)
 
         edge_ixs = get_and_compute_temporal_edge_indices(centers_dict,\
-                    NuscenesMotGraph.KNN_PARAM_TEMPORAL, use_cuda=use_cuda)
+                    NuscenesMotGraph.KNN_PARAM_TEMPORAL, device= self.device)
 
         edge_feats_dict = None
         
@@ -145,7 +144,7 @@ class NuscenesMotGraph(object):
         # print(centers_dict.keys())
 
         edge_feats_dict = compute_edge_feats_dict(edge_ixs= edge_ixs,
-                            centers_dict=centers_dict, use_cuda=use_cuda)
+                            centers_dict=centers_dict, device=self.device)
 
         return edge_ixs, edge_feats_dict
 
@@ -259,7 +258,7 @@ class NuscenesMotGraph(object):
 
         # Transfere to GPU if available
         # flow_labels = torch.FloatTensor(flow_labels)
-        flow_labels = flow_labels.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        flow_labels = flow_labels.to(self.device)
 
         self.graph_obj.edge_labels = flow_labels
 
@@ -321,7 +320,9 @@ class NuscenesMotGraph(object):
 
             edge_label = generate_edge_label_one_hot(self.nuscenes_handle,
                             str_node_a_sample_annotation,
-                            str_node_b_sample_annotation, new_instances_token_list = new_instance_token_list)
+                            str_node_b_sample_annotation, 
+                            new_instances_token_list = new_instance_token_list,
+                            device = self.device)
 
             flow_labels.append(edge_label)
 
@@ -330,7 +331,7 @@ class NuscenesMotGraph(object):
 
         # Transfere to GPU
         # flow_labels = torch.FloatTensor(flow_labels)
-        flow_labels = flow_labels.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        flow_labels = flow_labels.to(self.device)
 
         self.graph_obj.edge_labels = flow_labels
 
@@ -385,7 +386,7 @@ class NuscenesMotGraph(object):
 
         # Transfere to GPU           
         flow_labels = torch.FloatTensor(flow_labels)
-        flow_labels = flow_labels.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        flow_labels = flow_labels.to(self.device)
 
         self.graph_obj.edge_labels = flow_labels
 
@@ -419,7 +420,7 @@ class NuscenesMotGraph(object):
 
         # Prepare Inputs/ bring into apropiate shape to generate graph/object
         centers = centers_dict["all"]
-        t_centers = torch.from_numpy(centers)
+        t_centers = torch.from_numpy(centers).to(self.device)
 
         edge_feats = edge_feats_dict['relative_vectors']
 
@@ -445,4 +446,4 @@ class NuscenesMotGraph(object):
             self.graph_obj = undirectTransfomer(self.graph_obj)
             print(self.graph_obj)
         
-        self.graph_obj.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        self.graph_obj.to(self.device)
