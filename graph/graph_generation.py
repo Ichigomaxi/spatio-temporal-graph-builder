@@ -1,4 +1,5 @@
 from collections import defaultdict
+from ctypes import Union
 from enum import Enum
 from turtle import distance
 from typing import Dict
@@ -9,8 +10,15 @@ from matplotlib.pyplot import axis
 from sklearn.utils import deprecated
 from utility import get_box_centers
 
+from enum import IntEnum
 import numpy as np
 import torch
+
+class edge_types(IntEnum):
+    spatial_edges = 0
+    temporal_edges = 1
+
+EDGE_FEATURE_COMPUTATION_MODE = set(["relative_position", "edge_type"])
 
 class Timeframe(Enum):
     t0 = 0
@@ -305,8 +313,11 @@ def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
     
     return t_temporal_pointpairs
 
-def compute_edge_feats_dict(edge_ixs, graph_dataframe:Dict, 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+def compute_edge_feats_dict(edge_ixs_dict:Dict[str,torch.Tensor],
+            graph_dataframe:Dict[str,Dict[str,torch.Tensor]],
+            mode:str, 
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu"))\
+            -> Dict[str, torch.Tensor]:
     """
     Computes a dictionary of edge features among pairs of detections
     Args:
@@ -317,21 +328,52 @@ def compute_edge_feats_dict(edge_ixs, graph_dataframe:Dict,
         with vals of that attribute for each edge.
 
     """
-    # device = torch.device("cuda" if torch.cuda.is_available() and use_cuda else "cpu")
+    
+    if mode not in EDGE_FEATURE_COMPUTATION_MODE:
+        raise ValueError('Incorrect mode string. Please use any of these keywords: {}'.format(EDGE_FEATURE_COMPUTATION_MODE))
 
+    t_edge_ixs = edge_ixs_dict["edges"]
+    t_temporal_edges_mask = edge_ixs_dict["temporal_edges_mask"]
+
+    edge_feats_dict = {}
+    # Compute features
+    t_relative_vectors = None
+    if (mode == "relative_position"):
+        centers = graph_dataframe["centers_list_all"].cpu().numpy()
+        t_relative_vectors = compute_relative_position(centers, t_edge_ixs, device)
+        edge_feats_dict['relative_position']= t_relative_vectors
+
+    elif(mode == "edge_type"):
+        t_edge_types_one_hot = encode_edge_types(t_temporal_edges_mask, device=device)
+        edge_feats_dict['edge_type']= t_edge_types_one_hot
+    
+    return edge_feats_dict
+
+def compute_relative_position(nodes :np.ndarray,
+            t_edge_ixs: torch.Tensor ,
+            device:torch.device)-> torch.Tensor:
     relative_vectors = []
-    centers = graph_dataframe["centers_list_all"].cpu().numpy()
-    for edge in edge_ixs:
+        
+    for edge in t_edge_ixs:
         reference_ind = edge[0]
         neighbor_ind = edge[1]
-        reference_node = centers[reference_ind]
-        neighbor_node = centers[neighbor_ind]
+        reference_node = nodes[reference_ind]
+        neighbor_node = nodes[neighbor_ind]
         relative_vector =  reference_node - neighbor_node
         relative_vectors.append(relative_vector) # List of numpy arrays
     np_relative_vectors = np.asarray(relative_vectors)
     t_relative_vectors = torch.from_numpy(np_relative_vectors).to(device)
-    
-    edge_feats_dict = {'relative_vectors': t_relative_vectors
-        }
 
-    return edge_feats_dict
+    return t_relative_vectors
+
+def encode_edge_types(
+            edge_type_mask:torch.Tensor, 
+            device:torch.device)-> torch.Tensor:
+    # Init one hot encoding tensor
+    t_edge_types_one_hot = torch.zeros(edge_type_mask.shape[0],len(edge_types), dtype=torch.uint8).to(device)
+    # Get one dimensional tensor(num_edge, edge_type)
+    t_edge_types = torch.where(edge_type_mask[:,0]==True,1,0).to(device)
+    t_edge_types.unsqueeze_(1)
+
+    t_edge_types_one_hot.scatter_(1, t_edge_types, 1)
+    return t_edge_types_one_hot
