@@ -179,7 +179,7 @@ def transform_knn_matrix_2_neighborhood_list(t_knn_matrix:torch.Tensor,
     return t_neighborhood_list
 
 def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
-        knn_param:int,
+        knn_param:int, self_referencing_edges:bool = False,
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )-> torch.Tensor:
     '''
@@ -187,6 +187,14 @@ def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
     Returns:
     t_spatial_pointpairs:torch interger tensor (num_spatial_edges,2)
     '''
+    # increase knn param because one column will be removed since it 
+    # is the self referencing edge connection
+    knn_param_temp = None
+    if(self_referencing_edges==False):
+        knn_param_temp = knn_param + 1
+    else:
+        knn_param_temp = knn_param
+
     #Init indices list
     spatial_indices = []
 
@@ -197,8 +205,11 @@ def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
 
     # Frame t0
     #Compute K nearest neighbors
-    nbrs_0 = NearestNeighbors(n_neighbors=knn_param, algorithm='ball_tree').fit(centers0)
-    _, spatial_indices_0 = nbrs_0.kneighbors(centers0)
+    nbrs_0 = NearestNeighbors(n_neighbors=knn_param_temp, algorithm='ball_tree').fit(centers0)
+    spatial_indices_0 = nbrs_0.kneighbors(centers0, return_distance=False)
+     #Remove the self referencing edge connection
+    if (self_referencing_edges==False):
+        spatial_indices_0 = spatial_indices_0[:, 1:]
 
     t_spatial_indices_0 = torch.from_numpy(spatial_indices_0).to(device)
     num_spatial_nodes_0 = centers0.shape[0]
@@ -206,8 +217,11 @@ def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
     spatial_indices.append(t_edge_indices_0)
 
     #Frame t1
-    nbrs_1 = NearestNeighbors(n_neighbors=knn_param, algorithm='ball_tree').fit(centers1)
-    _, spatial_indices_1 = nbrs_1.kneighbors(centers1)
+    nbrs_1 = NearestNeighbors(n_neighbors=knn_param_temp, algorithm='ball_tree').fit(centers1)
+    spatial_indices_1 = nbrs_1.kneighbors(centers1, return_distance=False)
+    #Remove the self referencing edge connection
+    if (self_referencing_edges==False):
+        spatial_indices_1 = spatial_indices_1[:, 1:]
 
     t_spatial_indices_1 = torch.from_numpy(spatial_indices_1).to(device)
     num_spatial_nodes_1 = centers1.shape[0]
@@ -216,21 +230,23 @@ def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
     spatial_indices.append(t_edge_indices_1)
 
     #Frame t2
-    nbrs_2 = NearestNeighbors(n_neighbors=knn_param, algorithm='ball_tree').fit(centers2)
-    _, spatial_indices_2 = nbrs_2.kneighbors(centers2)
-
+    nbrs_2 = NearestNeighbors(n_neighbors=knn_param_temp, algorithm='ball_tree').fit(centers2)
+    spatial_indices_2 = nbrs_2.kneighbors(centers2, return_distance=False)
+    #Remove the self referencing edge connection
+    if (self_referencing_edges==False):
+        spatial_indices_2 = spatial_indices_2[:, 1:]
+    
     t_spatial_indices_2 = torch.from_numpy(spatial_indices_2).to(device)
     num_spatial_nodes_2 = centers2.shape[0]
     t_edge_indices_2 = transform_knn_matrix_2_neighborhood_list(t_spatial_indices_2, num_spatial_nodes_2).to(device)
     t_edge_indices_2 += (num_spatial_nodes_1) + (num_spatial_nodes_0)
     spatial_indices.append(t_edge_indices_2)
-
     t_spatial_indices = torch.cat(spatial_indices, dim=0).to(device)
 
     return t_spatial_indices
 
 def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
-        knn_param:int,
+        knn_param:int, self_referencing_edges:bool = False,
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )-> torch.Tensor:
     '''
@@ -238,7 +254,14 @@ def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
     Returns:
     t_temporal_pointpairs:torch interger tensor (num_edges,2)
     '''
-
+    # increase knn param because one column will be removed since it 
+    # is the self referencing edge connection
+    knn_param_temp = None
+    if(self_referencing_edges==False):
+        knn_param_temp = knn_param + 1
+    else:
+        knn_param_temp = knn_param
+    
     temporal_pointpairs = []
 
     # print(centers_dict)
@@ -255,8 +278,11 @@ def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
         center = np.expand_dims(center,axis=0)
         temp = np.append(centers1,center,axis=0)
         #Find nearest_neigbor
-        nearest_neigbor = NearestNeighbors(n_neighbors=knn_param, algorithm='ball_tree').fit(temp)
-        temporal_distances, temporal_indices = nearest_neigbor.kneighbors(temp)
+        nearest_neigbor = NearestNeighbors(n_neighbors=knn_param_temp, algorithm='ball_tree').fit(temp)
+        temporal_indices = nearest_neigbor.kneighbors(temp, return_distance=False)
+        #Remove the self referencing edge connection
+        if (self_referencing_edges==False):
+            temporal_indices = temporal_indices[:,1:]
         #Add indices into a list
         for index in temporal_indices[-1]:
             #adapt the index to the global indexing
@@ -274,8 +300,11 @@ def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
         center = np.expand_dims(center,axis=0)
         temp = np.append(centers2,center,axis=0)
         #Find nearest_neigbor
-        nearest_neigbor = NearestNeighbors(n_neighbors=knn_param, algorithm='ball_tree').fit(temp)
-        temporal_distances, temporal_indices = nearest_neigbor.kneighbors(temp)
+        nearest_neigbor = NearestNeighbors(n_neighbors=knn_param_temp, algorithm='ball_tree').fit(temp)
+        temporal_indices = nearest_neigbor.kneighbors(temp, return_distance=False)
+        #Remove the self referencing edge connection
+        if (self_referencing_edges==False):
+            temporal_indices = temporal_indices[:,1:]
         #Add indices into a list (The last entry belongs to center!)
         for index in temporal_indices[-1]:
             #adapt the index to the global indexing
@@ -292,9 +321,11 @@ def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
         center = centers1[i]
         center = np.expand_dims(center,axis=0)
         temp = np.append(centers2,center,axis=0)
-        nearest_neigbor = NearestNeighbors(n_neighbors=knn_param, algorithm='ball_tree').fit(temp)
-        temporal_distances, temporal_indices = nearest_neigbor.kneighbors(temp)
-
+        nearest_neigbor = NearestNeighbors(n_neighbors=knn_param_temp, algorithm='ball_tree').fit(temp)
+        temporal_indices = nearest_neigbor.kneighbors(temp, return_distance=False)
+        #Remove the self referencing edge connection
+        if (self_referencing_edges==False):
+            temporal_indices = temporal_indices[:,1:]
         # Test if the last input is the appended center point
         # assert (temporal_distances[-1] == temporal_distances[np.argwhere(temp == center)[0,0]]).all()
 
@@ -324,7 +355,8 @@ def compute_edge_feats_dict(edge_ixs_dict:Dict[str,torch.Tensor],
         edge_ixs: Edges tensor with shape (2, num_edges)
         use_cuda: bool, determines whether operations must be performed in GPU
     Returns:
-        Dict where edge key is a string referring to the attr name, and each val is a tensor of shape (num_edges)
+        edge_feats_dict: Dictionary where edge key is a string referring to the attr name, and each val is a 
+        torch.tensor of shape (num_edges, num_edge_features)
         with vals of that attribute for each edge.
 
     """

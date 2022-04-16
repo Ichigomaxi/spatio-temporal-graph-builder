@@ -1,4 +1,5 @@
 from ctypes import Union
+from turtle import shape
 from typing import Dict, List
 
 import numpy as np
@@ -117,6 +118,17 @@ class NuscenesMotGraph(object):
 
         graph_dataframe["centers_list_all"] = t_centers_list
 
+        # Add tensor that encodes
+        t_frame_number = torch.empty(t_centers_list.shape[0], dtype=torch.int8).to(self.device)
+        current_row = 0
+        for frame_number in range(self.max_frame_dist):
+            num_samples_i = graph_dataframe["centers_dict"][frame_number].shape[0]
+            timeframe_i = torch.ones(num_samples_i).to(self.device) * frame_number
+            t_frame_number[current_row:-1,:] = timeframe_i
+            current_row += num_samples_i
+
+        graph_dataframe["timeframes_all"] = t_frame_number
+        
         return graph_dataframe
 
 
@@ -353,14 +365,15 @@ class NuscenesMotGraph(object):
         # Build Data-graph object for pytorch model
         self.graph_obj = Graph(x = t_centers,
                                edge_attr = edge_feats,
-                               edge_index = t_edge_ixs)
-        self.graph_obj.temporal_edges_mask = t_temporal_edge_mask
+                               edge_index = t_edge_ixs,
+                               temporal_edges_mask = t_temporal_edge_mask)
+        # self.graph_obj.temporal_edges_mask = t_temporal_edge_mask
 
         # Ensure that graph is undirected.
         if self.graph_obj.is_directed():
-            print(self.graph_obj)
+            print('Before:\n{}'.format(self.graph_obj))
             undirectTransfomer = ToUndirected()
             self.graph_obj = undirectTransfomer(self.graph_obj)
-            print(self.graph_obj)
+            print('After:\n{}'.format(self.graph_obj))
         
         self.graph_obj.to(self.device)
