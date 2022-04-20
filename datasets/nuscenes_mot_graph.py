@@ -6,19 +6,18 @@ import numpy as np
 from sklearn.utils import deprecated
 import torch
 import torch.nn.functional as F
-from graph.graph_generation import (add_general_centers,
+from graph.graph_generation import (
                                     compute_edge_feats_dict,
                                     get_and_compute_temporal_edge_indices, get_and_compute_spatial_edge_indices)
 from groundtruth_generation.nuscenes_create_gt import (
     generate_edge_label_one_hot, generate_flow_labels)
 from nuscenes import NuScenes
 from torch_geometric.transforms.to_undirected import ToUndirected
-from torch_scatter import scatter_min
+
 from utility import filter_boxes, get_box_centers, is_same_instance
 from utils.nuscenes_helper_functions import is_valid_box, is_valid_box_torch
-from zmq import device
 
-from datasets.mot_graph import Graph, MOTGraph
+from datasets.mot_graph import Graph
 
 # from utils.graph import get_knn_mask
 
@@ -27,6 +26,7 @@ class NuscenesMotGraph(object):
     SPATIAL_SHIFT_TIMEFRAMES = 20
     KNN_PARAM_TEMPORAL = 3
     KNN_PARAM_SPATIAL = 3
+    NODE_FEATURE_MODES = {"only_centers", "centers_and_time"}
 
     def __init__(self,nuscenes_handle:NuScenes, start_frame:str , max_frame_dist:int = 3,
                     filterBoxes_categoryQuery:str = None,
@@ -119,13 +119,15 @@ class NuscenesMotGraph(object):
         graph_dataframe["centers_list_all"] = t_centers_list
 
         # Add tensor that encodes
-        t_frame_number = torch.empty(t_centers_list.shape[0], dtype=torch.int8).to(self.device)
+        t_frame_number = torch.zeros((t_centers_list.shape[0],1), dtype=torch.int8).to(self.device)
         current_row = 0
-        for frame_number in range(self.max_frame_dist):
-            num_samples_i = graph_dataframe["centers_dict"][frame_number].shape[0]
-            timeframe_i = torch.ones(num_samples_i).to(self.device) * frame_number
-            t_frame_number[current_row:-1,:] = timeframe_i
-            current_row += num_samples_i
+        for frame_i in range(self.max_frame_dist):
+            num_samples_frame_i = len(graph_dataframe["boxes_dict"][frame_i])
+            timeframe_i = torch.ones(num_samples_frame_i,1, dtype=torch.int8).to(self.device) * frame_i
+            next_row = current_row + num_samples_frame_i
+            t_frame_number[current_row:next_row,:] = timeframe_i
+            current_row += num_samples_frame_i
+            current_row == next_row
 
         graph_dataframe["timeframes_all"] = t_frame_number
         
@@ -336,35 +338,67 @@ class NuscenesMotGraph(object):
             return False
         else:
             return True
-        
 
-    def construct_graph_object(self, edge_feature_mode="edge_type"):
+    def _load_node_features(self, node_feature_mode:str) -> torch.Tensor:
+        '''
+        Returns the corresponding features from self.graphdataframe 
+        depending on the given mode
+        Args:
+        node_feature_mode: string that defines mode
+        Returns:
+        t_node_features: torch.Tensor(num_object_samples_over_time, num_node_features) with all features 
+        '''
+        
+        if(node_feature_mode not in NuscenesMotGraph.NODE_FEATURE_MODES):
+            str_error_message = 'Incorrect label_type string!\n'\
+                    + ' Please use any of these Keywords: {}'.format(NuscenesMotGraph.NODE_FEATURE_MODES)
+            raise ValueError(str_error_message)
+
+        t_node_features = None
+
+        # num_node_features = 3 (x,y,z)
+        if(node_feature_mode == "only_centers"):
+            t_node_features = self.graph_dataframe["centers_list_all"]
+        
+        # num_node_features = 4 (x,y,z,t)
+        elif(node_feature_mode == "centers_and_time"):
+            t_centers = self.graph_dataframe["centers_list_all"]
+            t_timesteps = self.graph_dataframe["timeframes_all"]
+            t_node_features = torch.cat([t_centers,t_timesteps], dim = 1)
+
+        return t_node_features
+
+    def construct_graph_object(self,node_feature_mode="centers_and_time", edge_feature_mode="edge_type"):
         """
         Constructs the entire Graph object to serve as input to the MPN, and stores it in self.graph_obj,
         """
         # Determine graph connectivity (i.e. edges) and compute edge features
         edge_ixs_dict, edge_feats_dict = self._get_edge_ixs(edge_feature_mode)
         t_edge_ixs = edge_ixs_dict["edges"].to(self.device)
+        # Transpose if Graph connectivity not in COO format with shape :obj:`[2, num_edges]
+        if t_edge_ixs.shape[1] == 2:
+            t_edge_ixs = t_edge_ixs.T
 
         # Prepare Inputs/ bring into apropiate shape to generate graph/object
         # Node Features
-        t_centers = self.graph_dataframe["centers_list_all"]
+        t_node_features = self._load_node_features(node_feature_mode)
         
         # Edge Features
-        edge_feats = edge_feats_dict[edge_feature_mode]
-        # Transpose if not Graph connectivity in COO format with shape :obj:`[2, num_edges]
-        if t_edge_ixs.shape[1] == 2:
-            t_edge_ixs = t_edge_ixs.T
+        t_edge_feats = edge_feats_dict[edge_feature_mode]
         
         # Duplicate Edges to make Graph undirected
-        edge_feats = torch.cat((edge_feats, edge_feats), dim = 0).to(self.device)
-        t_edge_ixs = torch.cat((t_edge_ixs, torch.stack((t_edge_ixs[1], t_edge_ixs[0]))), dim=1).to(self.device)
+        t_edge_feats = torch.cat((t_edge_feats, t_edge_feats), dim = 0).to(self.device)
+        t_edge_ixs = torch.cat((t_edge_ixs, \
+                        torch.stack((t_edge_ixs[1], t_edge_ixs[0]))),\
+                        dim=1).to(self.device)
+
         t_temporal_edge_mask = torch.cat( [edge_ixs_dict["temporal_edges_mask"],
-                                         edge_ixs_dict["temporal_edges_mask"]], dim= 0).to(self.device)
+                                    edge_ixs_dict["temporal_edges_mask"]],
+                                    dim= 0).to(self.device)
         
         # Build Data-graph object for pytorch model
-        self.graph_obj = Graph(x = t_centers,
-                               edge_attr = edge_feats,
+        self.graph_obj = Graph(x = t_node_features,
+                               edge_attr = t_edge_feats,
                                edge_index = t_edge_ixs,
                                temporal_edges_mask = t_temporal_edge_mask)
         # self.graph_obj.temporal_edges_mask = t_temporal_edge_mask

@@ -18,7 +18,7 @@ class edge_types(IntEnum):
     spatial_edges = 0
     temporal_edges = 1
 
-EDGE_FEATURE_COMPUTATION_MODE = set(["relative_position", "edge_type"])
+EDGE_FEATURE_COMPUTATION_MODE = {"relative_position", "edge_type"}
 
 class Timeframe(Enum):
     t0 = 0
