@@ -23,7 +23,7 @@ class Message_Passing_spatio_temporal(MessagePassing):
         x = graph_object_mini_batch.x 
         edge_index = graph_object_mini_batch.edge_index
         edge_feature = graph_object_mini_batch.edge_attr
-        edge_label = graph_object_mini_batch.edge_labels
+        # edge_label = graph_object_mini_batch.edge_labels
         temporal_edges_mask = graph_object_mini_batch.temporal_edges_mask
 
         self.edge_updater(edge_index, edge_feature, temporal_edges_mask)
@@ -60,6 +60,6 @@ class Message_Passing_spatio_temporal(MessagePassing):
         :obj:`_j` to the variable name, *.e.g.* :obj:`x_i` and :obj:`x_j`.
         """
         print("edge_index", edge_index)
-        print("edge_index", edge_index_i)
+        # print("edge_index",  )
         print("edge_feature", edge_feature)
         print("temporal_edges_mask", temporal_edges_mask)
