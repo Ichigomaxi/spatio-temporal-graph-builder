@@ -27,3 +27,15 @@ def start_training(train_dataset, batch_size, num_epochs):
     train_loader = DataLoader(train_dataset, batch_size=batch_size)
     for epoch in range(num_epochs):
         train(model,optimizer,train_dataset, train_loader,device, crit)
+
+from sacred import Experiment
+ex = Experiment('hello_config')
+
+@ex.config
+def my_config():
+    recipient = "world"
+    message = "Hello %s!" % recipient
+
+@ex.automain
+def my_main(message):
+    print(message)
