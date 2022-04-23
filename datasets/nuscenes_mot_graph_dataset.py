@@ -10,7 +10,7 @@ from datasets.nuscenes_dataset import NuscenesDataset
 
 from datasets.nuscenes_sequence import NuscenesMOTSeqProcessor
 
-class NuscenesMOTGraphDataset(MOTGraphDataset):
+class NuscenesMOTGraphDataset(object):
     """
     Adopted from MOTGraphDataset 
     Main Dataset Class. It is used to sample graphs from a a set of MOT sequences by instantiating MOTGraph objects.

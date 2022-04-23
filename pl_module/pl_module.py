@@ -50,7 +50,7 @@ class MOTNeuralSolver(pl.LightningModule):
     def _get_data(self, mode, return_data_loader = True):
         assert mode in ('train', 'val', 'test')
 
-        dataset = MOTGraphDataset(dataset_params=self.hparams['dataset_params'],
+        dataset = NuscenesMOTGraphDataset(dataset_params=self.hparams['dataset_params'],
                                   mode=mode,
                                   cnn_model=self.cnn_model,
                                   splits= self.hparams['data_splits'][mode],
@@ -116,7 +116,7 @@ class MOTNeuralSolver(pl.LightningModule):
 
         outputs = self.model(batch)
         loss = self._compute_loss(outputs, batch)
-        logs = {**compute_perform_metrics(outputs, batch), **{'loss': loss}}
+        logs = {**{'loss': loss}}
         log = {key + f'/{train_val}': val for key, val in logs.items()}
 
         if train_val == 'train':
@@ -136,27 +136,3 @@ class MOTNeuralSolver(pl.LightningModule):
         metrics = pd.DataFrame(outputs).mean(axis=0).to_dict()
         metrics = {metric_name: torch.as_tensor(metric) for metric_name, metric in metrics.items()}
         return {'val_loss': metrics['loss/val'], 'log': metrics}
-
-    def track_all_seqs(self, output_files_dir, dataset, use_gt = False, verbose = False):
-        tracker = MPNTracker(dataset=dataset,
-                             graph_model=self.model,
-                             use_gt=use_gt,
-                             eval_params=self.hparams['eval_params'],
-                             dataset_params=self.hparams['dataset_params'])
-
-        constraint_sr = pd.Series(dtype=float)
-        for seq_name in dataset.seq_names:
-            print("Tracking", seq_name)
-            if verbose:
-                print("Tracking sequence ", seq_name)
-
-            os.makedirs(output_files_dir, exist_ok=True)
-            _, constraint_sr[seq_name] = tracker.track(seq_name, output_path=osp.join(output_files_dir, seq_name + '.txt'))
-
-            if verbose:
-                print("Done! \n")
-
-
-        constraint_sr['OVERALL'] = constraint_sr.mean()
-
-        return constraint_sr

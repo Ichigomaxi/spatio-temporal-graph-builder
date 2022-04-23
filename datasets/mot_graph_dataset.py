@@ -60,7 +60,7 @@ class MOTGraphDataset:
             # seqs_to_retrieve[osp.join(DATA_PATH, seqs_path)] = seq_list
             # seqs = {osp.join(DATA_PATH, seqs_path): seq_list for seqs_path, seq_list in  _SPLITS[split_name].items()}
             # seqs_to_retrieve.update(seqs)
-
+            print("test")
 
         return seqs_to_retrieve
 

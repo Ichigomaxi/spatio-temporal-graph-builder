@@ -59,14 +59,18 @@ def main(_config, _run):
     ckpt_callback = ModelCheckpoint(save_epoch_start = _config['train_params']['save_epoch_start'],
                                     save_every_epoch = _config['train_params']['save_every_epoch'])
 
+    # Validation percentage check is deprecated in favour of limit_val_batches 
+    # val_percent_check = _config['eval_params']['val_percent_check']
+    # limit_val_batches = _config['eval_params']['val_percent_check']
+
+    #nb_sanity_val_steps is deprecated
+    
     trainer = Trainer(gpus=1,
                       callbacks=[ckpt_callback],
                       weights_summary = None,
                       checkpoint_callback=False,
                       max_epochs=_config['train_params']['num_epochs'],
-                      val_percent_check = _config['eval_params']['val_percent_check'],
                       check_val_every_n_epoch=_config['eval_params']['check_val_every_n_epoch'],
-                      nb_sanity_val_steps=0,
                       logger =logger,
                       default_save_path=osp.join(OUTPUT_PATH, 'experiments', run_str))
     trainer.fit(model)
