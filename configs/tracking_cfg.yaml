@@ -1,3 +1,7 @@
+gpu_settings:
+  device_type: "gpu"
+  # Specify which GPUs to use
+  device_id: [1] # Specifically takes the gpu associated with cuda:1 
 ckpt_path: trained_models/graph_nets/mot_mpnet_epoch_006.ckpt
 train_params:
   batch_size: 8
@@ -69,9 +73,9 @@ dataset_params:
     static: 6
 
 data_splits: # See nuscenes.datasplit()
-  train: [""test","hallo"]
-  val: [""test","hallo"]
-  test: [""test","hallo"]
+  train: ['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']
+  val: ['scene-0103', 'scene-0916']
+  test: []
 
 eval_params:
   # Logging / Metrics reporting params

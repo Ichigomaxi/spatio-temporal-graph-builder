@@ -23,3 +23,35 @@ pip install dash
 pip install jupyter-dash
 pip install pandas
 
+4) install pytorch and pytorch-geometric
+conda list output:
+pyg                       2.0.4           py39_torch_1.10.0_cu113    pyg
+pytorch                   1.10.0          py3.9_cuda11.3_cudnn8.2.0_0    pytorch
+pytorch-cluster           1.6.0           py39_torch_1.10.0_cu113    pyg
+pytorch-mutex             1.0                        cuda    pytorch
+pytorch-scatter           2.0.9           py39_torch_1.10.0_cu113    pyg
+pytorch-sparse            0.6.13          py39_torch_1.10.0_cu113    pyg
+pytorch-spline-conv       1.2.1           py39_torch_1.10.0_cu113    pyg
+torch-tb-profiler         0.4.0                    pypi_0    pypi
+torchmetrics              0.8.0              pyhd8ed1ab_0    conda-forge
+pip list output:
+torch                   1.10.0
+torch-cluster           1.6.0
+torch-geometric         2.0.4
+torch-scatter           2.0.9
+torch-sparse            0.6.13
+torch-spline-conv       1.2.1
+torch-tb-profiler       0.4.0
+torchmetrics            0.8.0
+
+5) install pytorch lightning:
+conda list output:
+pytorch-lightning         1.5.10             pyhd8ed1ab_0    conda-forge
+pip list output:
+pytorch-lightning       1.5.10
+
+6) install sacred (at this moment must be installed manually. Download from git and do "python setup.py")
+conda list output:
+sacred                    0.8.3                    pypi_0    pypi
+pip list output:
+sacred                  0.8.3

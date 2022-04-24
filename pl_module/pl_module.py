@@ -5,6 +5,7 @@ This is serves as inspiration for our own code
 '''
 import os
 import os.path as osp
+from typing import Dict
 
 import pandas as pd
 
@@ -31,52 +32,55 @@ class MOTNeuralSolver(pl.LightningModule):
 
     It includes all data loading and train / val logic., and it is used for both training and testing models.
     """
-    def __init__(self, hparams):
+    def __init__(self, hparams:dict):
         super().__init__()
 
-        self.hparams = hparams
+        
+        # deprecated way to assign hparams instead use self.save_hyperparameters(hparams)
+        # self.hparams = hparams
+        self.save_hyperparameters(hparams)
+        
         self.model = self.load_model()
-        self.device  = self.hparams['graph_model_params']['device']
     
     def forward(self, x):
         self.model(x)
 
     def load_model(self):
 
-        model =  MOTMPNet(self.hparams['graph_model_params']).to(self.device)
+        model =  MOTMPNet(self.hparams['graph_model_params'])
 
         return model
 
-    def _get_data(self, mode, return_data_loader = True):
-        assert mode in ('train', 'val', 'test')
+    # def _get_data(self, mode, return_data_loader = True):
+    #     assert mode in ('train', 'val', 'test')
 
-        dataset = NuscenesMOTGraphDataset(dataset_params=self.hparams['dataset_params'],
-                                  mode=mode,
-                                  cnn_model=self.cnn_model,
-                                  splits= self.hparams['data_splits'][mode],
-                                  logger=None)
+    #     dataset = NuscenesMOTGraphDataset(dataset_params=self.hparams['dataset_params'],
+    #                               mode=mode,
+    #                               cnn_model=self.cnn_model,
+    #                               splits= self.hparams['data_splits'][mode],
+    #                               logger=None)
 
-        if return_data_loader and len(dataset) > 0:
-            train_dataloader = DataLoader(dataset,
-                                          batch_size = self.hparams['train_params']['batch_size'],
-                                          shuffle = True if mode == 'train' else False,
-                                          num_workers=self.hparams['train_params']['num_workers'])
-            return train_dataloader
+    #     if return_data_loader and len(dataset) > 0:
+    #         train_dataloader = DataLoader(dataset,
+    #                                       batch_size = self.hparams['train_params']['batch_size'],
+    #                                       shuffle = True if mode == 'train' else False,
+    #                                       num_workers=self.hparams['train_params']['num_workers'])
+    #         return train_dataloader
         
-        elif return_data_loader and len(dataset) == 0:
-            return []
+    #     elif return_data_loader and len(dataset) == 0:
+    #         return []
         
-        else:
-            return dataset
+    #     else:
+    #         return dataset
 
-    def train_dataloader(self):
-        return self._get_data(mode = 'train')
+    # def train_dataloader(self):
+    #     return self._get_data(mode = 'train')
 
-    def val_dataloader(self):
-        return self._get_data('val')
+    # def val_dataloader(self):
+    #     return self._get_data('val')
 
-    def test_dataset(self, return_data_loader=False):
-        return self._get_data('test', return_data_loader = return_data_loader)
+    # def test_dataset(self, return_data_loader=False):
+    #     return self._get_data('test', return_data_loader = return_data_loader)
 
     def configure_optimizers(self):
         optim_class = getattr(optim_module, self.hparams['train_params']['optimizer']['type'])
