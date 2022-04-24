@@ -71,8 +71,8 @@ def main(_config, _run):
     
     #########################################
     # Load Data 
-    
-    nusc = NuScenes(version='v1.0-trainval', dataroot='/media/HDD2/Datasets/mini_nusc', verbose=True)
+    nusc = NuScenes(version='v1.0-mini', dataroot=r"C:\Users\maxil\Documents\projects\master_thesis\mini_nuscenes", verbose=True)
+    # nusc = NuScenes(version='v1.0-trainval', dataroot='/media/HDD2/Datasets/mini_nusc', verbose=True)
     split = create_splits_scenes()
     print(split.keys())
     split_scene_list = []
