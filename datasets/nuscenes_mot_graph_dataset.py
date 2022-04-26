@@ -6,7 +6,7 @@ import torch
 
 from datasets.mot_graph_dataset import MOTGraphDataset
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
-from datasets.nuscenes_dataset import NuscenesDataset
+from datasets.NuscenesDataset import NuscenesDataset
 
 from datasets.nuscenes_sequence import NuscenesMOTSeqProcessor
 
@@ -19,7 +19,7 @@ class NuscenesMOTGraphDataset(object):
     Its main method is 'get_from_frame_and_seq', where given sequence name and a starting frame position, a graph is
     returned.
     """
-    def __init__(self, dataset_params, mode, splits, logger = None, cnn_model = None):
+    def __init__(self, dataset_params, mode, splits, logger = None):
         
         # assert mode in ("train", "val", "test", "train_detect", "train_track",
         #           "mini_train", "mini_val")
@@ -28,11 +28,9 @@ class NuscenesMOTGraphDataset(object):
         self.dataset_params = dataset_params
         self.mode = mode
         self.logger = logger
-        self.augment = self.dataset_params['augment'] and mode in ('train', "train_detect", "train_track", "mini_train")
 
-        # self.cnn_model = cnn_model
         self.nuscenes_dataset = NuscenesDataset(dataset_params["dataset_version"],dataset_params["dataroot"])
-
+        self.nuscenes_handle = self.nuscenes_dataset.nuscenes_handle
 
         seqs_to_retrieve = self._get_seqs_to_retrieve_from_splits(splits)
 
@@ -193,28 +191,13 @@ class NuscenesMOTGraphDataset(object):
             mot_graph: output MOTGraph object or Graph object, depending on whethter return full_object == True or not
 
         """
-        seq_det_df = self.seq_det_dfs[seq_name]
-        seq_info_dict= self.seq_info_dicts[seq_name]
-        seq_step_size = self.seq_info_dicts[seq_name]['step_size']
-
-        # If doing data augmentation, randomly change the fps rate at which the scene is processed
-        if self.mode == 'train' and self.augment and seq_step_size > 1:
-            if np.random.rand() < self.dataset_params['p_change_fps_step']:
-                seq_step_size = np.round(seq_step_size*(0.5 + np.random.rand())).astype(int)
 
         mot_graph = NuscenesMotGraph(dataset_params=self.dataset_params,
-                             seq_info_dict= seq_info_dict,
-                             seq_det_df=seq_det_df,
-                             step_size=seq_step_size,
-                             start_frame=start_frame,
-                             end_frame=end_frame,
-                             ensure_end_is_in=ensure_end_is_in,
-                             max_frame_dist = max_frame_dist,
-                             cnn_model = self.cnn_model,
-                             inference_mode=inference_mode)
-
-        if self.mode == 'train' and self.augment:
-            mot_graph.augment()
+                                    start_frame=start_frame,
+                                    end_frame=end_frame,
+                                    ensure_end_is_in=ensure_end_is_in,
+                                    max_frame_dist = max_frame_dist,
+                                    inference_mode=inference_mode)
 
         # Construct the Graph Network's input
         mot_graph.construct_graph_object()
@@ -240,5 +223,67 @@ class NuscenesMOTGraphDataset(object):
         #                                    return_full_object=False,
         #                                    inference_mode=False,
         #                                    max_frame_dist=self.dataset_params['max_frame_dist'])
+
+        # nusc = NuScenes(version='v1.0-trainval', dataroot='/media/HDD2/Datasets/mini_nusc', verbose=True)
+        split = create_splits_scenes()
+        print(split.keys())
+        split_scene_list = []
+        for scene_name in split['mini_train']:
+            for scene in nusc.scene:
+                if scene['name']==scene_name:
+                    split_scene_list.append(scene)
+
+        sample_dict = {}
+        i = 0 
+        for scene in split_scene_list:
+            last_sample_token =""
+            sample_token = scene['first_sample_token']
+            while(last_sample_token == ""):
+                
+                sample = nusc.get('sample', sample_token)
+                sample_dict[i] = (scene['token'],sample["token"])
+                i += 1
+                sample_token = sample["next"]
+                if(sample["token"]== scene['last_sample_token']):
+                    last_sample_token = scene['last_sample_token']
+
+        #Create List of Graph objects
+        #______________________________________________________________#
+        # Decide if only first scene should be computed
+        only_first_scene = True
+        scene_token0, sample_token0= sample_dict[0]
+        device = "cuda:1"
+        device = model.device
+        #_______________________________________________________________#
+
+        MotGraphList= []
+        for sample_key in sample_dict:
+            scene_token_current, sample_token_current= sample_dict[sample_key]
+            if(only_first_scene):
+                if(scene_token0 == scene_token_current):
+                    object = NuscenesMotGraph(nuscenes_handle = nusc,
+                                start_frame=sample_token_current,
+                                max_frame_dist = 3, 
+                                filterBoxes_categoryQuery='vehicle.car',
+                                device= device)
+                    is_possible2construct = object.is_possible2construct
+                    if is_possible2construct:
+                        object.construct_graph_object()
+                        # object.assign_edge_labels_one_hot()
+                        # object.assign_edge_labels(label_type='multiclass')
+                        object.assign_edge_labels(label_type='binary')
+                        MotGraphList.append(object)
+            else:
+                object = NuscenesMotGraph(nuscenes_handle = nusc,
+                                start_frame=sample_token_current,
+                                max_frame_dist = 3,  
+                                filterBoxes_categoryQuery='vehicle.car',device= device)
+                is_possible2construct = object.is_possible2construct
+                if is_possible2construct:
+                    object.construct_graph_object()
+                    object.assign_edge_labels(label_type='binary')
+                    # object.assign_edge_labels(label_type='multiclass')
+                    MotGraphList.append(object)
+
         seq_name, start_frame = self.seq_frame_ixs[ix]
         return self.nuscenes_dataset.get_from_frame_and_seq(seq_name,start_frame)
