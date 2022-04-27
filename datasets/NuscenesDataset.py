@@ -35,24 +35,67 @@ class NuscenesDataset(object):
         self.splits_to_scene_names: Dict[str, List[str]] = create_splits_scenes()
         print("Done parsing")
 
-    
-        # # return ['data_1.pt', 'data_2.pt', ...]
-        # #Get set of scenes
-        # scenes = self.nuscenes_handle.scene
-        # #Get first scenes
-        # scene_0 = scenes[0]
-        # # Get token of first frame
-        # first_sample_token = scene_0['first_sample_token']
+    def get_single_nuscenes_mot_graph_debugging(self,
+                                specific_device:str =None, 
+                                label_type:str ='binary',
+                                filterBoxes_categoryQuery:str = None,
+                                number_skip_frames = None
+                                ):
+        '''
+        Return list/sequence of nuscenes_mot_graph objects.
+        The processed data is taken from the mini_train split. Therefore it is mainly used for debugging and development
 
-        # sample_0 = self.nuscenes_handle.get('sample', first_sample_token)
+        '''
+        # nusc = NuScenes(version='v1.0-mini', dataroot=r"C:\Users\maxil\Documents\projects\master_thesis\mini_nuscenes", verbose=True)
+        nusc = self.nuscenes_handle
+        #Get set of scenes
+        scenes = nusc.scene
+        #Get first scenes
+        scene_0 = scenes[0]
+        # Get token of first frame
+        first_sample_token = scene_0['first_sample_token']
+        
+        NUMBER_OF_SKIPPED_FRAMES = 0
+        if number_skip_frames is not None:
+            NUMBER_OF_SKIPPED_FRAMES = number_skip_frames
+         
+        for i in range(NUMBER_OF_SKIPPED_FRAMES):
+            temp_sample = nusc.get('sample', first_sample_token)
+            temp_token = temp_sample['next']
+            first_sample_token = temp_token
 
-        # # Get LIDAR pointcloud
-        # sensor = 'LIDAR_TOP'
-        # lidar_top_data_0 = self.nuscenes_handle.get('sample_data', sample_0['data'][sensor])
+        sample_token_current = first_sample_token
 
-        # pcl_path, _, _= self.nuscenes_handle.get_sample_data(lidar_top_data_0['token'], selected_anntokens=None, use_flat_vehicle_coordinates =False)
+        #______________________________________________________________#
+        # Define device flexibly
+        device = None
+        if specific_device is None:
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            if device.type == 'cuda':
+                for i in range(torch.cuda.device_count()):
+                    if torch.cuda.get_device_name(i) == "GeForce RTX 2080":
+                        device = torch.device(i) # RTX 2080 8GB
+        else:
+            device = specific_device
+        print("Device:", device)
+        #_______________________________________________________________#
 
-        # return [pcl_path]
+        object = NuscenesMotGraph(nuscenes_handle = nusc,
+                    start_frame=sample_token_current,
+                    max_frame_dist = 3, 
+                    filterBoxes_categoryQuery=filterBoxes_categoryQuery,
+                    device= device)
+        is_possible2construct = object.is_possible2construct
+
+        MotGraph_object = None 
+        assert is_possible2construct, "Not possible to construct a Mot graph!!"
+
+        object.construct_graph_object()
+        object.assign_edge_labels(label_type=label_type)
+        MotGraph_object = object
+
+        return MotGraph_object
+        
 
     def get_nuscenes_mot_graph_list_debugging(self, 
                                 only_first_scene:bool,

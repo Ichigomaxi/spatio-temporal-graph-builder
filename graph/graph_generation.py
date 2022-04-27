@@ -212,6 +212,8 @@ def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
         spatial_indices_0 = spatial_indices_0[:, 1:]
 
     t_spatial_indices_0 = torch.from_numpy(spatial_indices_0).to(device)
+    for i in range(t_spatial_indices_0.shape[1]):
+        t_spatial_indices_0[0,:]
     num_spatial_nodes_0 = centers0.shape[0]
     t_edge_indices_0 = transform_knn_matrix_2_neighborhood_list(t_spatial_indices_0, num_spatial_nodes_0).to(device)
     spatial_indices.append(t_edge_indices_0)
