@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union
 from xmlrpc.client import Boolean
 
 import numpy as np
@@ -36,17 +36,20 @@ def is_same_instance(nuscenes_handle:NuScenes, \
     else:
         return False
 
-def filter_boxes(nuscenes_handle:NuScenes, boxes:List[Box], categoryQuery: str):
+def filter_boxes(nuscenes_handle:NuScenes, 
+                        boxes:List[Box],
+                        categoryQuery: Union[str,List[str]]) -> List[Box]:
     """
     Returns a list of Bounding Boxes that belong to a specified class or subclass
 
     :param nuscenes_handle: nuscenes wrapper that allows to look for instance token
-    :param sample_annotation_token_i: Unique sample_annotation identifier. Identifies Bounding Boxes
-    :param sample_annotation_token_j: Unique sample_annotation identifier. Identifies Bounding Boxes
     """
+    if not isinstance(categoryQuery, list):
+        categoryQuery = [categoryQuery]
+    
     filtered_boxes = []
     for box in boxes:
         category = nuscenes_handle.get('sample_annotation',box.token)['category_name']
-        if( category.find(categoryQuery) != -1 ):
+        if any(object_categorie in category for object_categorie in categoryQuery):
             filtered_boxes.append(box)
     return filtered_boxes

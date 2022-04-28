@@ -109,9 +109,26 @@ def add_line_set_labeled(nodes:torch.Tensor, edge_indices: torch.Tensor,edge_lab
 
 def visualize_input_graph(mot_graph:NuscenesMotGraph):
     geometry_list = []
-    # mot_graph.edge_attr
 
+    nodes_3d_coord = mot_graph.graph_obj.x[:,:3]
+    edge_indices= mot_graph.graph_obj.edge_index
+    edge_labels= mot_graph.graph_obj.edge_labels
+    edge_features = mot_graph.graph_obj.edge_attr
 
+    # Color Points/Nodes
+    point_sequence = add_pointcloud(nodes_3d_coord,
+                                    color= None)
+    geometry_list += point_sequence
+    
+    assert mot_graph.label_type is not None
+
+    if mot_graph.label_type == "binary":
+        edge_type_numbers = edge_features.argmax(dim = 1)
+        input_lineset = add_line_set_labeled(nodes = nodes_3d_coord,
+                            edge_indices= edge_indices, 
+                            edge_labels= edge_type_numbers
+                            )
+    geometry_list += input_lineset
     # Draw Graph/Edges with Lineset
     # Spatial Edges Red Edges
     
@@ -119,17 +136,24 @@ def visualize_input_graph(mot_graph:NuscenesMotGraph):
     return geometry_list
 def visualize_output_graph(mot_graph:NuscenesMotGraph):
     geometry_list = []
+
+    #----------------------------------------
+    # Include reference frame
+    mesh_frame = geometry.TriangleMesh.create_coordinate_frame(
+                size=5, origin=[0, 0, 0])  # create coordinate frame
+    geometry_list += [mesh_frame]
+
     #----------------------------------------
     # Color Points/Nodes
     point_sequence = add_pointcloud(mot_graph.graph_obj.x[:,:3],
                                     color= None)
-
+    geometry_list += point_sequence
+    #----------------------------------------
+    # Active and inactive Edges
     line_set_sequence = add_line_set_labeled(nodes= mot_graph.graph_obj.x[:,:3],
                                     edge_indices= mot_graph.graph_obj.edge_index,
                                     edge_labels= mot_graph.graph_obj.edge_labels)
     geometry_list += line_set_sequence
-
-    geometry_list += point_sequence
     #----------------------------------------
 
     return geometry_list
@@ -184,7 +208,7 @@ def visualize_basic_graph(mot_graph:NuscenesMotGraph):
     return geometry_list
 
 
-def main(mode:str = "single"):
+def main(mode:str = "single", filterBoxes_categoryQuery="vehicle.car"):
     dataset = NuscenesDataset('v1.0-mini', dataroot=r"C:\Users\maxil\Documents\projects\master_thesis\mini_nuscenes")
    
     MotGraphList =[]
@@ -192,13 +216,13 @@ def main(mode:str = "single"):
         MotGraph_object = dataset.get_single_nuscenes_mot_graph_debugging(
                                     specific_device=None,
                                     label_type="binary",
-                                    filterBoxes_categoryQuery="vehicle.car")
+                                    filterBoxes_categoryQuery = filterBoxes_categoryQuery)
         MotGraphList.append(MotGraph_object)
     else:
         MotGraphList = dataset.get_nuscenes_mot_graph_list_debugging(True,
                                     specific_device=None,
                                     label_type="binary",
-                                    filterBoxes_categoryQuery="vehicle.car")
+                                    filterBoxes_categoryQuery = filterBoxes_categoryQuery)
 
     for i, mot_graph in enumerate(MotGraphList):
         geometry_list_input = visualize_input_graph(mot_graph)
@@ -206,18 +230,16 @@ def main(mode:str = "single"):
         geometry_list_basic = visualize_basic_graph(mot_graph)
 
         if len(geometry_list_input) != 0:
+            print("Input-Graph: starting {}-th visualization!".format(i))
             o3d.visualization.draw_geometries(geometry_list_input)
+            print("Input-Graph:stoped {}-th visualization!".format(i))
 
         if len(geometry_list_output) != 0:   
-            print("starting {}-th visualization!".format(i))
+            print("Output-Graph: starting {}-th visualization!".format(i))
             o3d.visualization.draw_geometries(geometry_list_output)
-            print("stoped {}-th visualization!".format(i))
+            print("Output-Graph:stoped {}-th visualization!".format(i))
 
         if len(geometry_list_basic) != 0: 
             print("starting {}-th visualization!".format(i))
             o3d.visualization.draw_geometries(geometry_list_basic)
             print("stoped {}-th visualization!".format(i))
-            
-
-if __name__ == "__main__":
-    main()

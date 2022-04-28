@@ -1,148 +1,51 @@
-import os.path as osp
 
-import numpy as np
-import pandas as pd
-import torch
-
-from datasets.mot_graph_dataset import MOTGraphDataset
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
 from datasets.NuscenesDataset import NuscenesDataset
 
-from datasets.nuscenes_sequence import NuscenesMOTSeqProcessor
-
 class NuscenesMOTGraphDataset(object):
     """
-    Adopted from MOTGraphDataset 
+    Adopted from MOTGraphDataset from https://github.com/dvl-tum/mot_neural_solver
     Main Dataset Class. It is used to sample graphs from a a set of MOT sequences by instantiating MOTGraph objects.
     It is used both for sampling small graphs for training, as well as for loading entire sequence's graphs
     for testing.
     Its main method is 'get_from_frame_and_seq', where given sequence name and a starting frame position, a graph is
     returned.
     """
-    def __init__(self, dataset_params, mode, splits, logger = None):
+    def __init__(self, dataset_params, mode, splits =None, logger = None):
         
-        # assert mode in ("train", "val", "test", "train_detect", "train_track",
-        #           "mini_train", "mini_val")
         assert mode in NuscenesDataset.ALL_SPLITS
 
         self.dataset_params = dataset_params
         self.mode = mode
         self.logger = logger
 
-        self.nuscenes_dataset = NuscenesDataset(dataset_params["dataset_version"],dataset_params["dataroot"])
+        self.nuscenes_dataset = NuscenesDataset(self.dataset_params["dataset_version"],
+                                                self.dataset_params["dataroot"])
+        
         self.nuscenes_handle = self.nuscenes_dataset.nuscenes_handle
 
-        seqs_to_retrieve = self._get_seqs_to_retrieve_from_splits(splits)
+        self.seqs_to_retrieve = self._get_seqs_to_retrieve_from_splits(splits)
 
-        # Load all dataframes containing detection information in each sequence of the dataset
-        self.seq_det_dfs, self.seq_info_dicts, self.seq_names = self._load_seq_dfs(seqs_to_retrieve)
-
-        if self.seq_names:
-            # Update each sequence's meatinfo with step sizes
-            self._compute_seq_step_sizes()
-
+        if self.seqs_to_retrieve:
             # Index the dataset (i.e. assign a pair (scene, starting frame) to each integer from 0 to len(dataset) -1)
             self.seq_frame_ixs = self._index_dataset()
 
     def _get_seqs_to_retrieve_from_splits(self, splits):
         """
-        Returns list of sequences corresponding to the mode
+        Returns list of sequences(nuscenes scene-objects) corresponding to the mode
         """
-        seqs_to_retrieve = []
-        for split in self.nuscenes_dataset.splits:
-            if split == self.mode:
-                seqs_to_retrieve = split
+        seqs_to_retrieve = None
+        if splits is None:
+            
+
+            dict_splits_to_scene_names = self.nuscenes_dataset.splits_to_scene_names
+            split_name = self.mode
+            scene_names = dict_splits_to_scene_names[split_name]
+            sequences_by_name = self.nuscenes_dataset.sequences_by_name
+
+            seqs_to_retrieve = [sequences_by_name[scene_name] for scene_name in scene_names]
+            
         return seqs_to_retrieve
-
-    def _load_seq_dfs(self, seqs_to_retrieve):
-        """
-        Loads all the detections dataframes corresponding to the seq_names that constitute the dataset
-        Args:
-            seqs_to_retrieve: dictionary of pairs (dataset_path: seq_list), where each seq_list is a set of
-             sequence names to include in the dataset.
-
-        Returns:
-            seq_det_dfs: dictionary of Dataframes of detections corresponding to each sequence in the dataset
-            seq_info_dicts: dictionary of dictionarys with metainfo for each sequence
-            seq_names: a list of names of all sequences in the dataset
-        """
-        seq_names = []
-        seq_info_dicts = {}
-        seq_det_dfs = {}
-
-        # for dataset_path, seq_list in seqs_to_retrieve.items():
-        #     for seq_name in seq_list:
-
-        #         seq_processor = NuscenesMOTSeqProcessor(dataset_path=dataset_path, seq_name=seq_name,
-        #                                         dataset_params=self.dataset_params, cnn_model=self.cnn_model,
-        #                                         logger=self.logger)
-        #         seq_det_df = seq_processor.load_or_process_detections()
-
-        #         # If we are dealing with ground truth and we visibility score, filter our detections that are not visible
-        #         if 'vis' in seq_det_df:
-        #             seq_det_df = seq_det_df[seq_det_df['vis'] > self.dataset_params['gt_training_min_vis']]
-
-        #         seq_names.append(seq_name)
-        #         seq_info_dicts[seq_name] = seq_det_df.seq_info_dict
-        #         seq_det_dfs[seq_name] = seq_det_df
-
-        seq_names = []
-
-        if seq_names:
-
-            return seq_det_dfs, seq_info_dicts, seq_names
-
-        else:
-            return None, None, []
-
-    def _compute_seq_step_sizes(self):
-        """
-        Determines the sampling rate of frames within a sequence, and updates each seq_info_dict with it
-        Example: if a sequence is recorded at 25fps and we want to process 5 fps, then step_size = 5
-        (i.e., we process 1 out 5 frames)
-        """
-        for seq_name, seq_info_dict in self.seq_info_dicts.items():
-            seq_type = 'moving' if seq_info_dict['mov_camera'] else 'static'
-            target_fps= self.dataset_params['target_fps_dict'][seq_type]
-            scene_fps = seq_info_dict['fps']
-            if scene_fps <= target_fps:
-                step_size = 1
-
-            else:
-                step_size=  round(scene_fps / target_fps)
-
-            self.seq_info_dicts[seq_name]['step_size'] = step_size
-
-    def _get_last_frame_df(self):
-        """
-        Used for indexing the dataset. Determines all valid (seq_name, start_frame) pairs. To determine which pairs
-        are valid, we need to know whether there are sufficient future detections at a given frame in a sequence to
-        meet our minimum detections and target frames per graph
-
-        Returns:
-            last_frame_df: dataframe containing the last valid starting frame for each sequence.
-        """
-        last_graph_frame = self.dataset_params['frames_per_graph'] if self.dataset_params['frames_per_graph'] != 'max' else 1
-        min_detects = 1 if self.dataset_params['min_detects'] is None else self.dataset_params['min_detects']
-
-        last_frame_dict = {}
-        for scene in self.seq_names:
-            scene_df = self.seq_det_dfs[scene]
-            scene_step_size = self.seq_info_dicts[scene]['step_size']
-            max_frame = scene_df.frame.max() - (last_graph_frame * scene_step_size)  # Maximum frame at which
-                                                                                     # we can start a graph and still
-                                                                                     # have enough frames.
-            min_detects_max_frame = scene_df.iloc[-(min_detects * scene_step_size)]['frame'] # Maximum frame at which
-                                                                                             # we cans start a graph
-                                                                                             # and still have enough dets.
-            max_frame = min(max_frame, min_detects_max_frame)
-            last_frame_dict[scene] = max_frame
-
-        # Create a dataframe with the result
-        last_frame_df = pd.DataFrame().from_dict(last_frame_dict, orient='index')
-        last_frame_df = last_frame_df.reset_index().rename(columns={'index': 'seq_name', 0: 'last_frame'})
-
-        return last_frame_df
 
     def _index_dataset(self):
         """
@@ -152,29 +55,44 @@ class NuscenesMOTGraphDataset(object):
         Returns:
             tuple of tuples of valid (seq_name, frame_num) pairs from which a graph can be created
         """
-        # Create  df containg all seq det_dfs
-        concat_seq_dfs = []
-        for seq_name, det_df in self.seq_det_dfs.items():
-            seq_det_df_ = det_df.copy()
-            seq_det_df_['seq_name'] = seq_name
-            concat_seq_dfs.append(seq_det_df_)
+        split_scene_list = self.seqs_to_retrieve
 
-        concat_seq_dfs = pd.concat(concat_seq_dfs, sort=False)
+        # Create List of all sample frames within the retrieved scenes/sequences 
+        sample_list_all = []
+        for scene in split_scene_list:
+            last_sample_token =""
+            sample_token = scene['first_sample_token']
+            while(last_sample_token == ""):
+                sample = self.nuscenes_handle.get('sample', sample_token)
+                sample_list_all.append((scene['token'], sample["token"]))
+                sample_token = sample["next"]
+                if(sample["token"]== scene['last_sample_token']):
+                    last_sample_token = scene['last_sample_token']
 
-        # Get all valid (seq_name, starting_frame) pairs
-        seq_frame_pairs = concat_seq_dfs[['seq_name', 'frame']].drop_duplicates()
-        last_frame_df = self._get_last_frame_df()
-        index_df = seq_frame_pairs.merge(last_frame_df, on = 'seq_name')
-        index_df = index_df[index_df['frame']<=index_df['last_frame']]
+        # Filter out all non valid (scene_tokens, sample_tokens) that will not be able to build a valid graph with 3 or more frames
+        filtered_sample_list = []
+        for scene_sample_tuple in sample_list_all:
+            # Check sample if enough frames remaining to construct graph
+            scene_token, init_sample_token = scene_sample_tuple
+            # Get Scenes-object
+            scene = self.nuscenes_handle.get("scene",scene_token)
+            # Count how many sample frames are remaining until last frame 
+            last_sample_token = ""
+            sample_token = init_sample_token
+            i= 0
+            while(last_sample_token == ""):
+                sample = self.nuscenes_handle.get('sample', sample_token)
+                sample_token = sample["next"]
+                i += 1
+                if(sample["token"]== scene['last_sample_token']):
+                    last_sample_token = scene['last_sample_token']
+            # If less than dataset_params['max_frame_dist'] frames counted then we filter it out
+            if not (i < self.dataset_params['max_frame_dist']):
+                filtered_sample_list.append(scene_sample_tuple)
+        
+        return filtered_sample_list
 
-        # Create a tuples with pairs (scene, starting_frame), that will be used to know which pair corresponds to each ix
-        seq_frame_ixs = list((tuple(seq_frame) for seq_frame in index_df[['seq_name', 'frame']].values))
-
-        # Shuffle ixs to ensure that if we only sample a subset of the dataloader, we still sample different seqs
-        #random.shuffle(seq_frame_ixs)
-        return seq_frame_ixs
-
-    def get_from_frame_and_seq(self, seq_name, start_frame, max_frame_dist, end_frame = None, ensure_end_is_in = False,
+    def get_from_frame_and_seq(self, seq_name, start_frame, max_frame_dist,
                                return_full_object = False, inference_mode =False):
         """
         Method behind __getitem__ method. We load a graph object of the given sequence name, starting at 'start_frame'.
@@ -182,8 +100,6 @@ class NuscenesMOTGraphDataset(object):
         Args:
             seq_name: string indicating which scene to get the graph from
             start_frame: int indicating frame num at which the graph should start
-            end_frame: int indicating frame num at which the graph should end (optional)
-            ensure_end_is_in: bool indicating whether end_frame needs to be in the graph
             return_full_object: bool indicating whether we need the whole MOTGraph object or only its Graph object
                                 (Graph Network's input)
 
@@ -191,18 +107,16 @@ class NuscenesMOTGraphDataset(object):
             mot_graph: output MOTGraph object or Graph object, depending on whethter return full_object == True or not
 
         """
-
         mot_graph = NuscenesMotGraph(dataset_params=self.dataset_params,
                                     start_frame=start_frame,
-                                    end_frame=end_frame,
-                                    ensure_end_is_in=ensure_end_is_in,
                                     max_frame_dist = max_frame_dist,
-                                    inference_mode=inference_mode)
+                                    filterBoxes_categoryQuery= self.dataset_params["filterBoxes_categoryQuery"])
 
         # Construct the Graph Network's input
         mot_graph.construct_graph_object()
-        if self.mode in ('train', 'val'):
-            mot_graph.assign_edge_labels()
+        if self.mode in ('train', 'val', "train_detect", "train_track",
+                  "mini_train", "mini_val"):
+            mot_graph.assign_edge_labels(self.dataset_params["label_type"])
 
         if return_full_object:
             return mot_graph
@@ -211,79 +125,14 @@ class NuscenesMOTGraphDataset(object):
             return mot_graph.graph_obj
 
     def __len__(self):
-        # return len(self.seq_frame_ixs) if hasattr(self, 'seq_names') and self.seq_names else 0
-        return self.nuscenes_dataset.get_length()
+        return len(self.seq_frame_ixs) if hasattr(self, 'seqs_to_retrieve') and self.seqs_to_retrieve else 0
 
     def __getitem__(self, ix):
-        # seq_name, start_frame = self.seq_frame_ixs[ix]
-        # return self.get_from_frame_and_seq(seq_name= seq_name,
-        #                                    start_frame = start_frame,
-        #                                    end_frame=None,
-        #                                    ensure_end_is_in=False,
-        #                                    return_full_object=False,
-        #                                    inference_mode=False,
-        #                                    max_frame_dist=self.dataset_params['max_frame_dist'])
-
-        # nusc = NuScenes(version='v1.0-trainval', dataroot='/media/HDD2/Datasets/mini_nusc', verbose=True)
-        split = create_splits_scenes()
-        print(split.keys())
-        split_scene_list = []
-        for scene_name in split['mini_train']:
-            for scene in nusc.scene:
-                if scene['name']==scene_name:
-                    split_scene_list.append(scene)
-
-        sample_dict = {}
-        i = 0 
-        for scene in split_scene_list:
-            last_sample_token =""
-            sample_token = scene['first_sample_token']
-            while(last_sample_token == ""):
-                
-                sample = nusc.get('sample', sample_token)
-                sample_dict[i] = (scene['token'],sample["token"])
-                i += 1
-                sample_token = sample["next"]
-                if(sample["token"]== scene['last_sample_token']):
-                    last_sample_token = scene['last_sample_token']
-
-        #Create List of Graph objects
-        #______________________________________________________________#
-        # Decide if only first scene should be computed
-        only_first_scene = True
-        scene_token0, sample_token0= sample_dict[0]
-        device = "cuda:1"
-        device = model.device
-        #_______________________________________________________________#
-
-        MotGraphList= []
-        for sample_key in sample_dict:
-            scene_token_current, sample_token_current= sample_dict[sample_key]
-            if(only_first_scene):
-                if(scene_token0 == scene_token_current):
-                    object = NuscenesMotGraph(nuscenes_handle = nusc,
-                                start_frame=sample_token_current,
-                                max_frame_dist = 3, 
-                                filterBoxes_categoryQuery='vehicle.car',
-                                device= device)
-                    is_possible2construct = object.is_possible2construct
-                    if is_possible2construct:
-                        object.construct_graph_object()
-                        # object.assign_edge_labels_one_hot()
-                        # object.assign_edge_labels(label_type='multiclass')
-                        object.assign_edge_labels(label_type='binary')
-                        MotGraphList.append(object)
-            else:
-                object = NuscenesMotGraph(nuscenes_handle = nusc,
-                                start_frame=sample_token_current,
-                                max_frame_dist = 3,  
-                                filterBoxes_categoryQuery='vehicle.car',device= device)
-                is_possible2construct = object.is_possible2construct
-                if is_possible2construct:
-                    object.construct_graph_object()
-                    object.assign_edge_labels(label_type='binary')
-                    # object.assign_edge_labels(label_type='multiclass')
-                    MotGraphList.append(object)
-
         seq_name, start_frame = self.seq_frame_ixs[ix]
-        return self.nuscenes_dataset.get_from_frame_and_seq(seq_name,start_frame)
+
+        return self.get_from_frame_and_seq(seq_name= seq_name,
+                                           start_frame = start_frame,
+                                           max_frame_dist=self.dataset_params['max_frame_dist'],
+                                           return_full_object=False,
+                                           inference_mode=False
+                                           )

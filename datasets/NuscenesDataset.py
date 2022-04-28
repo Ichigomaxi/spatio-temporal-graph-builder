@@ -14,19 +14,23 @@ class NuscenesDataset(object):
     ALL_SPLITS = {"train", "val", "test", "train_detect", "train_track",
                   "mini_train", "mini_val"}
 
-    def __init__(self, dataset_version: str='v1.0-trainval', dataroot: str='/media/HDD2/Datasets/mini_nusc'):
+    def __init__(self, dataset_version: str='v1.0-trainval',
+                        dataroot: str='/media/HDD2/Datasets/mini_nusc', is_windows_path = False):
         
-        
+        if is_windows_path: 
+            self.dataroot = r"" + dataroot
+        else:
+            self.dataroot = dataroot
+
         print(f"Parsing NuScenes {dataset_version} ...")
-        
+        self.version = dataset_version
+
         # Init data handler
         self.nuscenes_handle = NuScenes( \
                                 version = dataset_version,\
                                 dataroot = dataroot,\
-                                verbose=True)
-                                
-        self.dataroot = dataroot
-        self.version = dataset_version
+                                verbose=True)     
+        
         #Set of strings
         self.splits: Set[str] = set(s for s in self.ALL_SPLITS if s.split("_")[0] in dataset_version)
         self.sequences_by_name: Dict[str, Any] = {

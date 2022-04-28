@@ -84,8 +84,6 @@ class NuscenesMotGraph(object):
         # Box memory is shared, so no new box memory space is allocated
         centers_dict = {} 
         for box_timeframe, box_list in boxes_dict.items():
-
-            # car_boxes = filter_boxes(self.nuscenes_handle, boxes= box_list, categoryQuery= 'vehicle.car')
             car_boxes = box_list
             centers = get_box_centers(car_boxes)
             centers_dict[box_timeframe] = (car_boxes,centers)
@@ -233,7 +231,8 @@ class NuscenesMotGraph(object):
         Generates Edge labels for each edge
         There are two kinds of labels: binary, multiclass
         '''
-
+        self.label_type = label_type
+        
         label_types = {"binary", "multiclass"}
         if label_type not in label_types:
             raise ValueError('Incorrect label_type string. Please use either "binary" or "multiclass"')

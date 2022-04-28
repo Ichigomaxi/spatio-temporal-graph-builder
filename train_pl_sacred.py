@@ -23,6 +23,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from nuscenes.nuscenes import NuScenes
 from nuscenes.utils.splits import create_splits_scenes
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
+from torch_geometric.loader import DataLoader
 ##################
 
 from sacred import SETTINGS
@@ -133,7 +134,6 @@ def main(_config, _run):
                 # object.assign_edge_labels(label_type='multiclass')
                 MotGraphList.append(object)
 
-    from torch_geometric.loader import DataLoader
 
     graph_list = []
     for graph in MotGraphList:
