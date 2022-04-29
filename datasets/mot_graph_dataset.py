@@ -9,7 +9,7 @@ import os.path as osp
 import numpy as np
 import pandas as pd
 
-# from mot_neural_solver.path_cfg import  DATA_PATH
+from utils.path_cfg import  DATA_PATH
 # from mot_neural_solver.data.splits import _SPLITS
 # from mot_neural_solver.data.mot_graph import MOTGraph
 # from mot_neural_solver.data.seq_processing.seq_processor import MOTSeqProcessor
@@ -60,7 +60,7 @@ class MOTGraphDataset:
             # seqs_to_retrieve[osp.join(DATA_PATH, seqs_path)] = seq_list
             # seqs = {osp.join(DATA_PATH, seqs_path): seq_list for seqs_path, seq_list in  _SPLITS[split_name].items()}
             # seqs_to_retrieve.update(seqs)
-
+            print("test")
 
         return seqs_to_retrieve
 

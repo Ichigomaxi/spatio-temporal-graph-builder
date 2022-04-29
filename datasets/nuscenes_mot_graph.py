@@ -1,20 +1,23 @@
-from typing import Dict
+# from ctypes import Union
+from turtle import shape
+from typing import Dict, List, Union
 
 import numpy as np
+from sklearn.utils import deprecated
 import torch
 import torch.nn.functional as F
-from graph.graph_generation import (add_general_centers,
+from graph.graph_generation import (
                                     compute_edge_feats_dict,
-                                    get_and_compute_temporal_edge_indices)
+                                    get_and_compute_temporal_edge_indices, get_and_compute_spatial_edge_indices)
 from groundtruth_generation.nuscenes_create_gt import (
     generate_edge_label_one_hot, generate_flow_labels)
 from nuscenes import NuScenes
 from torch_geometric.transforms.to_undirected import ToUndirected
-from torch_scatter import scatter_min
-from utility import filter_boxes, get_box_centers, is_same_instance
-from utils.nuscenes_helper_functions import is_valid_box
 
-from datasets.mot_graph import Graph, MOTGraph
+from utility import filter_boxes, get_box_centers, is_same_instance
+from utils.nuscenes_helper_functions import is_valid_box, is_valid_box_torch
+
+from datasets.mot_graph import Graph
 
 # from utils.graph import get_knn_mask
 
@@ -22,9 +25,11 @@ class NuscenesMotGraph(object):
 
     SPATIAL_SHIFT_TIMEFRAMES = 20
     KNN_PARAM_TEMPORAL = 3
+    KNN_PARAM_SPATIAL = 3
+    NODE_FEATURE_MODES = {"only_centers", "centers_and_time"}
 
     def __init__(self,nuscenes_handle:NuScenes, start_frame:str , max_frame_dist:int = 3,
-                    filterBoxes_categoryQuery:str = None,
+                    filterBoxes_categoryQuery:Union[str,List[str]] = None,
                     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
 
         self.max_frame_dist = max_frame_dist
@@ -39,6 +44,8 @@ class NuscenesMotGraph(object):
         # Dataframe: is a Dict that contains all necessary extra information
         #  for pre and post-processing apart from pytorch computations
         self.graph_dataframe:Dict = None
+
+        assert self.is_possible2construct, "Graph object cannot be be built! Probably there are not enough frames available before the scene ends"
         if self.is_possible2construct:
             self.graph_dataframe = self._construct_graph_dataframe()
 
@@ -79,8 +86,6 @@ class NuscenesMotGraph(object):
         # Box memory is shared, so no new box memory space is allocated
         centers_dict = {} 
         for box_timeframe, box_list in boxes_dict.items():
-
-            # car_boxes = filter_boxes(self.nuscenes_handle, boxes= box_list, categoryQuery= 'vehicle.car')
             car_boxes = box_list
             centers = get_box_centers(car_boxes)
             centers_dict[box_timeframe] = (car_boxes,centers)
@@ -113,38 +118,69 @@ class NuscenesMotGraph(object):
 
         graph_dataframe["centers_list_all"] = t_centers_list
 
+        # Add tensor that encodes
+        t_frame_number = torch.zeros((t_centers_list.shape[0],1), dtype=torch.int8).to(self.device)
+        current_row = 0
+        for frame_i in range(self.max_frame_dist):
+            num_samples_frame_i = len(graph_dataframe["boxes_dict"][frame_i])
+            timeframe_i = torch.ones(num_samples_frame_i,1, dtype=torch.int8).to(self.device) * frame_i
+            next_row = current_row + num_samples_frame_i
+            t_frame_number[current_row:next_row,:] = timeframe_i
+            current_row += num_samples_frame_i
+            current_row == next_row
+
+        graph_dataframe["timeframes_all"] = t_frame_number
+        
         return graph_dataframe
 
 
-    def _get_edge_ixs(self, centers_dict):
+    def _get_edge_ixs(self, mode:str):
         """
         Constructs graph edges by taking pairs of nodes with valid time connections (not in same frame, not too far
         apart in time) and perhaps taking KNNs according to reid embeddings.
         Args:
-            centers_dict: torch.tensor with shape (num_nodes, reid_embeds_dim)
-
         Returns:
             edge_ixs: torch.tensor withs shape (2, num_edges) describes indices of edges, 
             edge_feats_dict: dict with edge features, mainly torch.Tensors e.g (num_edges, num_edge_features)
         """
-        use_cuda = True
 
-        add_general_centers(centers_dict,\
-                    NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES)
-        # print(centers_dict)
+        # Compute Spatial Edges
+        t_spatial_edge_ixs = get_and_compute_spatial_edge_indices(
+                    self.graph_dataframe,
+                    NuscenesMotGraph.KNN_PARAM_SPATIAL,
+                    device= self.device)
+        # Compute Temporal Edges
+        t_temporal_edge_ixs = get_and_compute_temporal_edge_indices(
+                    self.graph_dataframe,
+                    NuscenesMotGraph.KNN_PARAM_TEMPORAL,
+                    device= self.device)
 
-        edge_ixs = get_and_compute_temporal_edge_indices(centers_dict,\
-                    NuscenesMotGraph.KNN_PARAM_TEMPORAL, use_cuda=use_cuda)
+        #TODO Join temporal and spatial edges but also generate a mask to filter them
+        
+        # Combine Edge indices into one tensor 
+        # and compute a mask to be able to extract temporal edges
+        t_edge_ixs = torch.cat([t_temporal_edge_ixs, t_spatial_edge_ixs]).to(self.device)
+        t_temporal_mask = torch.ones_like(t_temporal_edge_ixs, dtype=torch.bool).to(self.device)
+        t_spatial_mask = torch.zeros_like(t_spatial_edge_ixs, dtype=torch.bool).to(self.device)
+        t_temporal_edges_mask = torch.cat([t_temporal_mask, t_spatial_mask]).to(self.device)
+
+        t_test = torch.masked_select(t_edge_ixs, t_temporal_edges_mask)
+        t_test_compare = t_temporal_edge_ixs.view((1,-1)).squeeze()
+        assert torch.equal(t_test,t_test_compare)
+        
+        edge_ixs_dict = {}
+        edge_ixs_dict["edges"] = t_edge_ixs
+        edge_ixs_dict["temporal_edges_mask"] = t_temporal_edges_mask
 
         edge_feats_dict = None
-        
-        
-        # print(centers_dict.keys())
 
-        edge_feats_dict = compute_edge_feats_dict(edge_ixs= edge_ixs,
-                            centers_dict=centers_dict, use_cuda=use_cuda)
+        edge_feats_dict = compute_edge_feats_dict(edge_ixs_dict,
+                            graph_dataframe=self.graph_dataframe,
+                            mode= mode, device=self.device)
 
-        return edge_ixs, edge_feats_dict
+        
+
+        return edge_ixs_dict, edge_feats_dict
 
     def _identify_new_instances_within_graph(self):
         """
@@ -158,8 +194,14 @@ class NuscenesMotGraph(object):
         # base_center = self.graph_dataframe['centers_dict'][base_key]
 
         # Put all base tokens into one list for comparison later
-        base_box_list_tokens = [base_box.token for base_box in base_box_list]
+        base_box_list_sample_annotation_tokens = [base_box.token for base_box in base_box_list]
 
+        base_box_list_instance_tokens = []
+        for sample_annotation_token in base_box_list_sample_annotation_tokens:
+            sample_annotation = self.nuscenes_handle.get('sample_annotation', sample_annotation_token)
+            instance_token = sample_annotation['instance_token']
+            base_box_list_instance_tokens.append(instance_token)
+            
         # Init list of new tokens
         new_instance_token_list = []
         new_instance_box_list = []
@@ -171,23 +213,44 @@ class NuscenesMotGraph(object):
             # Extract list of new objects
             if (box_list_i_key != base_key):
                 for box in box_list_i:
-                    if (box.token not in base_box_list_tokens) :
-                        new_instance_token_list.append(box.token)
+                    sample_annotation = self.nuscenes_handle.get('sample_annotation', box.token)
+                    instance_token = sample_annotation['instance_token']
+                    if ((instance_token not in base_box_list_instance_tokens)
+                        and
+                        (instance_token not in new_instance_token_list)) :
+                        new_instance_token_list.append(instance_token)
                         new_instance_box_list.append(box)
         
-        return new_instance_token_list, new_instance_box_list
+        #If needed you can remove duplicates with the following
+        # new_instance_token_set = set(new_instance_token_list)
+        # new_instance_token_list = list(new_instance_token_set)
 
-    def assign_edge_labels_one_hot(self):
+        return new_instance_token_list, new_instance_box_list
+        # return new_instance_token_list
+
+    def assign_edge_labels(self, label_type:str):
+        '''
+        Generates Edge labels for each edge
+        There are two kinds of labels: binary, multiclass
+        '''
+        self.label_type = label_type
+        
+        label_types = {"binary", "multiclass"}
+        if label_type not in label_types:
+            raise ValueError('Incorrect label_type string. Please use either "binary" or "multiclass"')
 
         box_list = self.graph_dataframe["boxes_list_all"]
         centers = self.graph_dataframe['centers_list_all']
         
-        new_instance_token_list, new_instance_box_list = self._identify_new_instances_within_graph()
+        new_instance_token_list = None
+        if label_type == "multiclass":
+            new_instance_token_list, _ = self._identify_new_instances_within_graph()
 
         flow_labels = []
 
         #TODO Change the way how to iterate through edges
-        t_edges = self.graph_obj.edge_index.cpu()
+        t_edges = self.graph_obj.edge_index.T
+
         for edge in t_edges:
             node_a_center = centers[edge[0]]
             node_b_center = centers[edge[1]]
@@ -196,90 +259,67 @@ class NuscenesMotGraph(object):
             node_b_box = box_list[edge[1]]
 
             # Check that car_box and car_centers match
-            if not (is_valid_box(node_a_box,node_a_center,
-                    spatial_shift_timeframes= NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES)\
-                    and is_valid_box(node_b_box,node_b_center,
-                    spatial_shift_timeframes= NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES)
+            if not (is_valid_box_torch(node_a_box,node_a_center,
+                    spatial_shift_timeframes= NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES,
+                    device= self.device)\
+                    and 
+                    is_valid_box_torch(node_b_box,node_b_center,
+                    spatial_shift_timeframes= NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES,
+                    device = self.device)
                     ):
-                print('invalid boxes!!!')
                 raise ValueError('A box does not correspond to a selected center')
 
             str_node_a_sample_annotation = node_a_box.token
             str_node_b_sample_annotation = node_b_box.token
 
-            edge_label = generate_edge_label_one_hot(self.nuscenes_handle,
-                            str_node_a_sample_annotation,
-                            str_node_b_sample_annotation, new_instances_token_list = new_instance_token_list)
+            if label_type == "binary":
+                edge_label = self._assign_edge_labels_binary(
+                                    str_node_a_sample_annotation,
+                                    str_node_b_sample_annotation)
 
-            print(edge_label.shape)
+            elif label_type == "multiclass":
+                edge_label = self._assign_edge_labels_one_hot(
+                                str_node_a_sample_annotation,
+                                str_node_b_sample_annotation,
+                                new_instances_token_list = new_instance_token_list)
+
             flow_labels.append(edge_label)
-        print(len(flow_labels))
 
         # Concatenate list of edge_labels
-        flow_labels = torch.cat(flow_labels, dim = 0)
-        print(flow_labels.shape)
+        if label_type == "binary":
+            flow_labels = torch.tensor(flow_labels,dtype=torch.uint8)
+        elif label_type == "multiclass":
+            flow_labels = torch.stack(flow_labels, dim = 0)
 
-        # Transfere to GPU
+        # Transfere to GPU if available
         # flow_labels = torch.FloatTensor(flow_labels)
-        flow_labels = flow_labels.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-        print('final_shape: ',flow_labels.shape)
+        flow_labels = flow_labels.to(self.device)
 
         self.graph_obj.edge_labels = flow_labels
 
-    def assign_edge_labels_binary(self):
-        """
-        Assigns self.graph_obj edge labels (tensor with shape (num_edges,)), with labels defined according to the
-        network flow MOT formulation
-        """
+    def _assign_edge_labels_one_hot(self,
+                    sample_annotation_token_a:str,
+                    sample_annotation_token_b:str,
+                    new_instances_token_list:List[str])->torch.Tensor:
 
-        box_list = []
-        for box_list_i_key in self.graph_dataframe["boxes_dict"]:
-            # 
-            box_list_i = self.graph_dataframe["boxes_dict"][box_list_i_key]
-            box_list = box_list + box_list_i
+        edge_label = generate_edge_label_one_hot(self.nuscenes_handle,
+                            sample_annotation_token_a,
+                            sample_annotation_token_b,
+                            new_instances_token_list = new_instances_token_list,
+                            device= self.device)
 
-        # flow_labels = generate_flow_labels(nuscenes_handle = self.nuscenes_handle,
-        #                     temporal_pointpairs = self.graph_obj.edge_attr,
-        #                     car_box_list= box_list, centers= self.graph_dataframe['centers_dict']["all"])
-        
-        # Transfere and compute information on cpu
-        nuscenes_handle = self.nuscenes_handle
-        temporal_pointpairs = (self.graph_obj.edge_index).cpu()
-        centers = self.graph_dataframe['centers_dict']["all"]
-        car_box_list = box_list
+        return edge_label
 
-        flow_labels = []
-        for point_pair in temporal_pointpairs:
-            node_a_center = centers[point_pair[0]]
-            node_b_center = centers[point_pair[1]]
+    def _assign_edge_labels_binary(self,
+                    str_node_a_sample_annotation:str,
+                    str_node_b_sample_annotation:str):
 
-            node_a_box = car_box_list[point_pair[0]]
-            node_b_box = car_box_list[point_pair[1]]
-
-            # Check that car_box and car_centers match
-            if not (is_valid_box(node_a_box,node_a_center,
-                    spatial_shift_timeframes= NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES)\
-                    and is_valid_box(node_b_box,node_b_center,
-                    spatial_shift_timeframes= NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES)
-                    ):
-                print('invalid boxes!!!')
-                raise ValueError('A box does not correspond to a selected center')
-
-            str_node_a_sample_annotation = node_a_box.token
-            str_node_b_sample_annotation = node_b_box.token
-
-            if (is_same_instance(nuscenes_handle,str_node_a_sample_annotation \
-                                    ,str_node_b_sample_annotation)):
-                flow_labels.append(1)
-            else:
-                flow_labels.append(0)
-
-
-        # Transfere to GPU           
-        flow_labels = torch.FloatTensor(flow_labels)
-        flow_labels = flow_labels.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-
-        self.graph_obj.edge_labels = flow_labels
+        if (is_same_instance(self.nuscenes_handle,
+                        str_node_a_sample_annotation,
+                        str_node_b_sample_annotation)):
+            return 1
+        else:
+            return 0
 
     def _is_possible2construct(self):
         init_sample = self.nuscenes_handle.get('sample',self.start_frame)
@@ -299,67 +339,76 @@ class NuscenesMotGraph(object):
             return False
         else:
             return True
-        
 
-    def construct_graph_object(self):
+    def _load_node_features(self, node_feature_mode:str) -> torch.Tensor:
+        '''
+        Returns the corresponding features from self.graphdataframe 
+        depending on the given mode
+        Args:
+        node_feature_mode: string that defines mode
+        Returns:
+        t_node_features: torch.Tensor(num_object_samples_over_time, num_node_features) with all features 
+        '''
+        
+        if(node_feature_mode not in NuscenesMotGraph.NODE_FEATURE_MODES):
+            str_error_message = 'Incorrect label_type string!\n'\
+                    + ' Please use any of these Keywords: {}'.format(NuscenesMotGraph.NODE_FEATURE_MODES)
+            raise ValueError(str_error_message)
+
+        t_node_features = None
+
+        # num_node_features = 3 (x,y,z)
+        if(node_feature_mode == "only_centers"):
+            t_node_features = self.graph_dataframe["centers_list_all"]
+        
+        # num_node_features = 4 (x,y,z,t)
+        elif(node_feature_mode == "centers_and_time"):
+            t_centers = self.graph_dataframe["centers_list_all"]
+            t_timesteps = self.graph_dataframe["timeframes_all"]
+            t_node_features = torch.cat([t_centers,t_timesteps], dim = 1)
+
+        return t_node_features
+
+    def construct_graph_object(self,node_feature_mode="centers_and_time", edge_feature_mode="edge_type"):
         """
         Constructs the entire Graph object to serve as input to the MPN, and stores it in self.graph_obj,
         """
-
-        # # Load Center points for features from LIDAR pointcloud frame of reference
-        # sensor = 'LIDAR_TOP'
-        # sample_token = self.start_frame
-            
-        # boxes_dict= {}
-        # for i in range(self.max_frame_dist):
-        #     # Append new boxes
-        #     sample = self.nuscenes_handle.get('sample', sample_token)
-        #     lidar_top_data = self.nuscenes_handle.get('sample_data', sample['data'][sensor])
-        #     _, boxes, _= self.nuscenes_handle.get_sample_data(lidar_top_data['token'], selected_anntokens=None, use_flat_vehicle_coordinates =False)
-        #     boxes_dict[i] = boxes
-
-        #     #Move to next sample
-        #     sample_token = sample["next"]
-
-        # centers_dict = {} 
-        # for box_timeframe, box_list in boxes_dict.items():
-
-        #     car_boxes = filter_boxes(self.nuscenes_handle, boxes= box_list, categoryQuery= 'vehicle.car')
-        #     centers = get_box_centers(car_boxes)
-        #     centers_dict[box_timeframe] = (car_boxes,centers)
-
-        centers_dict = self.graph_dataframe["centers_dict"]
         # Determine graph connectivity (i.e. edges) and compute edge features
-        edge_ixs, edge_feats_dict = self._get_edge_ixs(centers_dict)
-        
-        
+        edge_ixs_dict, edge_feats_dict = self._get_edge_ixs(edge_feature_mode)
+        t_edge_ixs = edge_ixs_dict["edges"].to(self.device)
+        # Transpose if Graph connectivity not in COO format with shape :obj:`[2, num_edges]
+        if t_edge_ixs.shape[1] == 2:
+            t_edge_ixs = t_edge_ixs.T
 
         # Prepare Inputs/ bring into apropiate shape to generate graph/object
-        centers = centers_dict["all"]
-        t_centers = torch.from_numpy(centers)
-
-        edge_feats = edge_feats_dict['relative_vectors']
-
-        # Transpose if not Graph connectivity in COO format with shape :obj:`[2, num_edges]
-        if edge_ixs.shape[1] == 2:
-            edge_ixs = edge_ixs.T
-
-        # print('edge_feats:',edge_feats.shape)
-        edge_feats = torch.cat((edge_feats, edge_feats), dim = 0)
-        # print('edge_feats:',edge_feats.shape)
-        # print('edge_ixs:',edge_ixs.shape)
-        edge_ixs = torch.cat((edge_ixs, torch.stack((edge_ixs[1], edge_ixs[0]))), dim=1)
-        # print('edge_ixs:',edge_ixs.shape)
-
-        self.graph_obj = Graph(x = t_centers,
-                               edge_attr = edge_feats,
-                               edge_index = edge_ixs)
+        # Node Features
+        t_node_features = self._load_node_features(node_feature_mode)
         
+        # Edge Features
+        t_edge_feats = edge_feats_dict[edge_feature_mode]
+        
+        # Duplicate Edges to make Graph undirected
+        t_edge_feats = torch.cat((t_edge_feats, t_edge_feats), dim = 0).to(self.device)
+        t_edge_ixs = torch.cat((t_edge_ixs, \
+                        torch.stack((t_edge_ixs[1], t_edge_ixs[0]))),\
+                        dim=1).to(self.device)
+
+        t_temporal_edge_mask = torch.cat( [edge_ixs_dict["temporal_edges_mask"],
+                                    edge_ixs_dict["temporal_edges_mask"]],
+                                    dim= 0).to(self.device)
+        
+        # Build Data-graph object for pytorch model
+        self.graph_obj = Graph(x = t_node_features,
+                               edge_attr = t_edge_feats,
+                               edge_index = t_edge_ixs,
+                               temporal_edges_mask = t_temporal_edge_mask)
+        # self.graph_obj.temporal_edges_mask = t_temporal_edge_mask
+
         # Ensure that graph is undirected.
         if self.graph_obj.is_directed():
-            print(self.graph_obj)
+            print('Before:\n{}'.format(self.graph_obj))
             undirectTransfomer = ToUndirected()
             self.graph_obj = undirectTransfomer(self.graph_obj)
-            print(self.graph_obj)
+            print('After:\n{}'.format(self.graph_obj))
         
-        self.graph_obj.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        self.graph_obj.to(self.device)

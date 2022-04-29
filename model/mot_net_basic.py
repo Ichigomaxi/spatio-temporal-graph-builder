@@ -1,4 +1,3 @@
-embed_dim = 128
 from torch_geometric.nn import TopKPooling
 from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
 
@@ -8,20 +7,23 @@ import torch.nn.functional as F
 from model.message_passing_module import Message_Passing_spatio_temporal
 
 class MOTNet(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, input_feature_size:int):
         super(MOTNet, self).__init__()
+        model_params = {}
+        message_passing_param_dict = {'node_feature_input_size': 4, 
+                                    "edge_feature_inpute_size": 2,
+                                    "node_feature_output_size":10,
+                                    "edge_feature_output_size":10,
+                                    }
 
-        self.conv1 = Message_Passing_spatio_temporal(embed_dim, 128)
-        self.pool1 = TopKPooling(128, ratio=0.8)
-        self.conv2 = Message_Passing_spatio_temporal(128, 128)
-        self.pool2 = TopKPooling(128, ratio=0.8)
-        self.lin1 = torch.nn.Linear(256, 128)
-        self.lin2 = torch.nn.Linear(128, 64)
-        self.lin3 = torch.nn.Linear(64, 1)
-        self.bn1 = torch.nn.BatchNorm1d(128)
-        self.bn2 = torch.nn.BatchNorm1d(64)
-        self.act1 = torch.nn.ReLU()
-        self.act2 = torch.nn.ReLU()        
+        
+        model_params['message_passing_param_dict'] = message_passing_param_dict
+
+        self.MessPassNet = Message_Passing_spatio_temporal(input_feature_size, message_passing_param_dict)
+        self.EdgeClassifier = torch.nn.Sequential(*[
+                    torch.nn.Linear(message_passing_param_dict["edge_feature_output_size"],3),
+                    torch.nn.LogSigmoid()
+                    ])
   
     def forward(self, data):
         x, edge_index, batch = data.x, data.edge_index, data.batch
@@ -48,3 +50,5 @@ class MOTNet(torch.nn.Module):
         x = torch.sigmoid(self.lin3(x)).squeeze(1)
 
         return x
+
+    

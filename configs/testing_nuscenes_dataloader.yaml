@@ -1,0 +1,95 @@
+gpu_settings:
+  device_type: "cpu"
+  # Specify which GPUs to use
+  device_id: [1] # Specifically takes the gpu associated with cuda:1 
+ckpt_path: trained_models/graph_nets/mot_mpnet_epoch_006.ckpt
+train_params:
+  batch_size: 8
+  num_epochs: 25
+  optimizer:
+    type: Adam
+    args:
+      lr: 0.001
+      weight_decay: 0.0001
+
+  lr_scheduler:
+    type:
+    args:
+      step_size: 7
+      gamma: 0.5
+
+  num_workers: 6 # Used for dataloaders
+  save_every_epoch: False # Determines if every a checkpoint will be saved for every epoch
+  save_epoch_start: 1 # If the arg above is set to True, determines the first epoch after which we start saving ckpts
+  tensorboard: False
+
+dataset_params:
+  # Dataset Processing params:
+  dataset_version: 'v1.0-mini'
+  dataroot : 'C:\Users\maxil\Documents\projects\master_thesis\mini_nuscenes'
+  is_windows_path : True
+  # Edge_Label Type
+  label_type: "binary"
+
+  # Filter Parameter
+  # Contains a list of nuscenes class labels.
+  # Only detections from these clases will be loaded for the graph
+  filterBoxes_categoryQuery: ['vehicle.car'] 
+
+  # Data Augmentation Params
+  augment: False # Determines whether data augmentation is performed
+
+  # Graph Construction Parameters
+  max_frame_dist: 3 # Maximum number of frames contained in each graph sampled graph
+  node_feature_mode : "centers_and_time" # determines the included node features 
+  edge_feature_mode : "edge_type" # determines the included edge features 
+
+data_splits: # See nuscenes.datasplit()
+  train: ['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']
+  val: ['scene-0103', 'scene-0916']
+  test: []
+
+eval_params:
+  # Logging / Metrics reporting params
+  tensorboard: True
+
+graph_model_params:
+  node_agg_fn: 'sum'
+  num_enc_steps: 12  # Number of message passing steps
+  num_class_steps: 11  # Number of message passing steps during feature vectors are classified (after Message Passing)
+  reattach_initial_nodes: False  # Determines whether initially encoded node feats are used during node updates
+  reattach_initial_edges: True  # Determines whether initially encoded edge feats are used during node updates
+
+  encoder_feats_dict:
+    edge_in_dim: 6
+    edge_fc_dims: [18, 18]
+    edge_out_dim: 16
+    node_in_dim: 2048
+    #node_fc_dims: [512, 128]
+    node_fc_dims: [128]
+    node_out_dim: 32
+    dropout_p: 0
+    use_batchnorm: False
+
+  edge_model_feats_dict:
+    fc_dims: [80, 16] # In size is 4 * encoded nodes + 2 * encoded edges
+    dropout_p: 0
+    use_batchnorm: False
+
+  # In size is 2 * encoded nodes + 1 * encoded edges
+  node_model_feats_dict:
+    fc_dims: [56, 32]
+    dropout_p: 0
+    use_batchnorm: False
+
+  classifier_feats_dict:
+    edge_in_dim: 16
+    edge_fc_dims: [8]
+    edge_out_dim: 1
+    dropout_p: 0
+    use_batchnorm: False
+
+  cnn_params:
+    arch: resnet50
+    model_weights_path:
+      resnet50: trained_models/reid/resnet50_market_cuhk_duke.tar-232

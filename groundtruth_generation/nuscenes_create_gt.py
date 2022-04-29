@@ -39,7 +39,7 @@ def assign_track_ids():
 def convert_into_one_hot_encoding(
         label:edge_label_classes, 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        ):
+        )-> torch.Tensor:
 
     label_one_hot = torch.zeros(len(edge_label_classes), dtype=torch.uint8, device = device)
 
@@ -56,26 +56,41 @@ def generate_edge_label_one_hot(nuscenes_handle:NuScenes,
             sample_annotation_token_a:str,
             sample_annotation_token_b:str,
             new_instances_token_list:List[str] = [],
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            )->torch.Tensor:
 
     label = None
     if (is_same_instance(nuscenes_handle,sample_annotation_token_a \
                                 ,sample_annotation_token_b)):
         label = edge_label_classes.same_instance
-    elif (is_new_instance_in_graph_scene(sample_annotation_token_a,
+    elif (is_new_instance_in_graph_scene(nuscenes_handle,sample_annotation_token_a,
                 sample_annotation_token_b, new_instances_token_list)):
         label = edge_label_classes.new_instance
     else:
         label = edge_label_classes.different_instance
 
-    return convert_into_one_hot_encoding(label)
+    return convert_into_one_hot_encoding(label, device=device)
 
 def is_new_instance_in_graph_scene(
+            nuscenes_handle:NuScenes,
             sample_annotation_token_a:str,
             sample_annotation_token_b:str,
             new_instances_token_list:List[str]):
-    if (sample_annotation_token_a in new_instances_token_list)\
-            or (sample_annotation_token_b in new_instances_token_list):
+    '''
+
+    '''
+    sample_annotation_a = nuscenes_handle.get('sample_annotation', sample_annotation_token_a)
+    sample_annotation_b = nuscenes_handle.get('sample_annotation', sample_annotation_token_b)
+
+    instance_token_a = sample_annotation_a['instance_token']
+    instance_token_b = sample_annotation_b['instance_token']
+
+    if ((instance_token_a in new_instances_token_list)
+        or 
+        (instance_token_b in new_instances_token_list)):
+        # print("instance_token_a: ",instance_token_a)
+        # print("instance_token_b: ",instance_token_b)
+        # print("new_instances_token_list: ",new_instances_token_list)
         return True
     else:
         return False

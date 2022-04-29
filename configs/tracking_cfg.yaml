@@ -1,0 +1,123 @@
+gpu_settings:
+  device_type: "gpu"
+  # Specify which GPUs to use
+  device_id: [1] # Specifically takes the gpu associated with cuda:1 
+ckpt_path: trained_models/graph_nets/mot_mpnet_epoch_006.ckpt
+train_params:
+  batch_size: 8
+  num_epochs: 25
+  optimizer:
+    type: Adam
+    args:
+      lr: 0.001
+      weight_decay: 0.0001
+
+  lr_scheduler:
+    type:
+    args:
+      step_size: 7
+      gamma: 0.5
+
+  num_workers: 6 # Used for dataloaders
+  save_every_epoch: False # Determines if every a checkpoint will be saved for every epoch
+  save_epoch_start: 1 # If the arg above is set to True, determines the first epoch after which we start saving ckpts
+  tensorboard: False
+
+dataset_params:
+  # Dataset Processing params:
+  
+  # Gt assignment
+  gt_assign_min_iou: 0.5 # Min IoU between a GT and detected box so that an assignment is allowed
+  # Parameters for heuristics used in MOT15 ground truth preprocessing for training
+  GT_train_max_iou_containment_thresh: 0.85 # Maximum overlap that two boxes can have in order to be kept
+  GT_train_max_iou_thresh: 0.75 # Maximum 'containment score' that a box can have in order to be kept (see mot_seqs.MOT15loader.py)
+
+  # Data Augmentation Params
+  augment: True # Determines whether data augmentation is performed
+  min_iou_bb_wiggling: 0.8 # Minimum IoU w.r.t. original box used when doing
+  min_ids_to_drop_perc: 0  # Minimum percentage of ids s.t. all of its detections will be dropped
+  max_ids_to_drop_perc: 0.15  # Maximum percentage of ids s.t. all of its detections will be dropped
+  min_detects_to_drop_perc: 0  # Minimum Percentage of detections that might be randomly dropped
+  max_detects_to_drop_perc: 0.3  # Maximum Percentage of detections that might be randomly dropped
+  p_change_fps_step: 0.5 # Probability of randomly changing the frame sampling rate during training
+
+  # RGB params
+  img_size: [128, 64] # Size at which bounding box images are resized
+  img_batch_size: 5000 # Batch size for evaluating
+
+  # Graph Construction Parameters
+  gt_training_min_vis: 0.2 # Minimum visibility score allowed in a GT box to be used for training
+  frames_per_graph: 15 # Maximum number of frames contained in each graph sampled graph
+  max_frame_dist: max # Determines the maximum distance in num of frames between two detections in a graph connected
+                      # by an edge (setting it to a num is dangerous, as dist in frames depends on fps...) (should use seconds instead)
+  min_detects: 25 # Minimum number of detections allowed so that a graph is sampled
+  max_detects: 500 # Maximum number of detections allowed
+  top_k_nns: 50  # Top K-nearest neighbors (w.r.t reid score) to which a node can be  connected in the graph
+  reciprocal_k_nns: True  # Indicates whether, connected nodes in the graph have to be
+                          # reciprocal NNs or not (i.e. (i, j) is an edge <--> i is a k-nn for j and
+                          # j is a k-nn for i
+  edge_feats_to_use: # List of edge features to use (see 'compute_edge_feats_dict' in utils/graph.py
+    # Time distance
+    - secs_time_dists
+    # Coordinate distances (differences)
+    - norm_feet_x_dists
+    - norm_feet_y_dists
+    # BB Size distances (Log-ratios)
+    - bb_height_dists
+    - bb_width_dists
+    # ReID Score
+    - emb_dist
+
+  target_fps_dict: # Frame sampling rate for sequences with static/moving camera
+    moving: 9
+    static: 6
+
+data_splits: # See nuscenes.datasplit()
+  train: ['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']
+  val: ['scene-0103', 'scene-0916']
+  test: []
+
+eval_params:
+  # Logging / Metrics reporting params
+  tensorboard: False
+
+graph_model_params:
+  node_agg_fn: 'sum'
+  num_enc_steps: 12  # Number of message passing steps
+  num_class_steps: 11  # Number of message passing steps during feature vectors are classified (after Message Passing)
+  reattach_initial_nodes: False  # Determines whether initially encoded node feats are used during node updates
+  reattach_initial_edges: True  # Determines whether initially encoded edge feats are used during node updates
+
+  encoder_feats_dict:
+    edge_in_dim: 6
+    edge_fc_dims: [18, 18]
+    edge_out_dim: 16
+    node_in_dim: 2048
+    #node_fc_dims: [512, 128]
+    node_fc_dims: [128]
+    node_out_dim: 32
+    dropout_p: 0
+    use_batchnorm: False
+
+  edge_model_feats_dict:
+    fc_dims: [80, 16] # In size is 4 * encoded nodes + 2 * encoded edges
+    dropout_p: 0
+    use_batchnorm: False
+
+  # In size is 2 * encoded nodes + 1 * encoded edges
+  node_model_feats_dict:
+    fc_dims: [56, 32]
+    dropout_p: 0
+    use_batchnorm: False
+
+  classifier_feats_dict:
+    edge_in_dim: 16
+    edge_fc_dims: [8]
+    edge_out_dim: 1
+    dropout_p: 0
+    use_batchnorm: False
+
+  cnn_params:
+    arch: resnet50
+    model_weights_path:
+      resnet50: trained_models/reid/resnet50_market_cuhk_duke.tar-232
