@@ -1,5 +1,5 @@
 gpu_settings:
-  device_type: "gpu"
+  device_type: "cpu"
   # Specify which GPUs to use
   device_id: [1] # Specifically takes the gpu associated with cuda:1 
 ckpt_path: trained_models/graph_nets/mot_mpnet_epoch_006.ckpt

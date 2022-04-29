@@ -1,6 +1,6 @@
-from ctypes import Union
+# from ctypes import Union
 from turtle import shape
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import numpy as np
 from sklearn.utils import deprecated
@@ -29,7 +29,7 @@ class NuscenesMotGraph(object):
     NODE_FEATURE_MODES = {"only_centers", "centers_and_time"}
 
     def __init__(self,nuscenes_handle:NuScenes, start_frame:str , max_frame_dist:int = 3,
-                    filterBoxes_categoryQuery:str = None,
+                    filterBoxes_categoryQuery:Union[str,List[str]] = None,
                     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
 
         self.max_frame_dist = max_frame_dist
@@ -44,6 +44,8 @@ class NuscenesMotGraph(object):
         # Dataframe: is a Dict that contains all necessary extra information
         #  for pre and post-processing apart from pytorch computations
         self.graph_dataframe:Dict = None
+
+        assert self.is_possible2construct, "Graph object cannot be be built! Probably there are not enough frames available before the scene ends"
         if self.is_possible2construct:
             self.graph_dataframe = self._construct_graph_dataframe()
 

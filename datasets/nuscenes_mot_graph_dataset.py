@@ -92,14 +92,15 @@ class NuscenesMOTGraphDataset(object):
         
         return filtered_sample_list
 
-    def get_from_frame_and_seq(self, seq_name, start_frame, max_frame_dist,
-                               return_full_object = False, inference_mode =False):
+    def get_from_frame_and_seq(self, seq_name:str, start_frame:str,
+                               return_full_object:bool = False,
+                                inference_mode:bool =False):
         """
         Method behind __getitem__ method. We load a graph object of the given sequence name, starting at 'start_frame'.
 
         Args:
-            seq_name: string indicating which scene to get the graph from
-            start_frame: int indicating frame num at which the graph should start
+            seq_name: scene_token from nuscenes.Nuscenes
+            start_frame: sample_token from nuscenes.Nuscenes
             return_full_object: bool indicating whether we need the whole MOTGraph object or only its Graph object
                                 (Graph Network's input)
 
@@ -107,10 +108,12 @@ class NuscenesMOTGraphDataset(object):
             mot_graph: output MOTGraph object or Graph object, depending on whethter return full_object == True or not
 
         """
-        mot_graph = NuscenesMotGraph(dataset_params=self.dataset_params,
-                                    start_frame=start_frame,
-                                    max_frame_dist = max_frame_dist,
-                                    filterBoxes_categoryQuery= self.dataset_params["filterBoxes_categoryQuery"])
+        mot_graph = NuscenesMotGraph(
+                                    nuscenes_handle = self.nuscenes_handle,
+                                    start_frame = start_frame,
+                                    max_frame_dist = self.dataset_params['max_frame_dist'],
+                                    filterBoxes_categoryQuery= self.dataset_params["filterBoxes_categoryQuery"]
+                                    )
 
         # Construct the Graph Network's input
         mot_graph.construct_graph_object()
@@ -132,7 +135,6 @@ class NuscenesMOTGraphDataset(object):
 
         return self.get_from_frame_and_seq(seq_name= seq_name,
                                            start_frame = start_frame,
-                                           max_frame_dist=self.dataset_params['max_frame_dist'],
                                            return_full_object=False,
                                            inference_mode=False
                                            )

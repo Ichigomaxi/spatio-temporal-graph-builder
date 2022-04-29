@@ -78,23 +78,25 @@ def main(_config, _run):
     train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_train")
     train_objectList = []
     for i in range(len(train_dataset)):
-        train_objectList.append(train_dataset[i].graph_obj)
-    train_loader = DataLoader(eval_objectList)
+        train_objectList.append(train_dataset[i])
+    train_loader = DataLoader(train_objectList,batch_size = 2)
     
+    # Test behaviour if Dataset object inserted into DataLoader
+    train_loader_2 = DataLoader(train_dataset,batch_size = 2)
+
     eval_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_val")
     eval_objectList = []
     for i in range(len(eval_dataset)):
-        eval_objectList.append(eval_dataset[i].graph_obj)
+        eval_objectList.append(eval_dataset[i])
     eval_loader = DataLoader(eval_objectList,batch_size = 2)
+
+    
     ###################################
 
-    accelerator = _config['gpu_settings']['device_type']
-    devices = _config['gpu_settings']['device_id']
+    # accelerator = _config['gpu_settings']['device_type']
+    # devices = _config['gpu_settings']['device_id']
 
-    trainer = Trainer(gpus=devices,
-                    callbacks=[ckpt_callback],
-                    weights_summary = None,
-                    checkpoint_callback=False,
+    trainer = Trainer(callbacks=[ckpt_callback],
                     max_epochs=_config['train_params']['num_epochs'],
                     logger =logger,
                     )
