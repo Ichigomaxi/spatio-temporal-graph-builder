@@ -3,7 +3,9 @@ gpu_settings:
   # Specify which GPUs to use
   device_id: [1] # Specifically takes the gpu associated with cuda:1 
   torch_device: 'cuda:1'
-ckpt_path: trained_models/graph_nets/mot_mpnet_epoch_006.ckpt
+
+ckpt_path:
+
 train_params:
   batch_size: 4
   num_epochs: 25
@@ -19,10 +21,10 @@ train_params:
       step_size: 7
       gamma: 0.5
 
-  num_workers: 6 # Used for dataloaders
+  num_workers: 1 # Used for dataloaders
   save_every_epoch: False # Determines if every a checkpoint will be saved for every epoch
   save_epoch_start: 1 # If the arg above is set to True, determines the first epoch after which we start saving ckpts
-  tensorboard: False
+  tensorboard: True
 
 dataset_params:
   # Dataset Processing params:
@@ -56,41 +58,45 @@ eval_params:
 
 graph_model_params:
   node_agg_fn: 'sum'
-  num_enc_steps: 12  # Number of message passing steps
-  num_class_steps: 11  # Number of message passing steps during feature vectors are classified (after Message Passing)
+  num_enc_steps: 5  # Number of message passing steps
+  num_class_steps: 3  # Number of message passing steps during feature vectors are classified (after Message Passing)
   reattach_initial_nodes: False  # Determines whether initially encoded node feats are used during node updates
   reattach_initial_edges: True  # Determines whether initially encoded edge feats are used during node updates
 
   encoder_feats_dict:
-    edge_in_dim: 6
-    edge_fc_dims: [18, 18]
-    edge_out_dim: 16
-    node_in_dim: 2048
-    #node_fc_dims: [512, 128]
-    node_fc_dims: [128]
-    node_out_dim: 32
-    dropout_p: 0
-    use_batchnorm: False
-
+      edge_in_dim: 2
+      edge_fc_dims: [18, 18]
+      edge_out_dim: 2
+      node_in_dim: 4
+      #node_fc_dims: [512, 128]
+      node_fc_dims: [128]
+      node_out_dim: 4
+      dropout_p: 0
+      use_batchnorm: False
+  
   edge_model_feats_dict:
-    fc_dims: [80, 16] # In size is 4 * encoded nodes + 2 * encoded edges
+    # Input size is 1(=node_factor) * 2 * #encoded nodes ('node_out_dim') 
+    # + 2(=edge_factor) * #encoded edges (edge_out_dim)
+    # Make sure last layer's output dimensions 
+    # equal the encoded edge feature size
+    fc_dims: [80, 2] 
     dropout_p: 0
     use_batchnorm: False
 
-  # In size is 2 * encoded nodes + 1 * encoded edges
   node_model_feats_dict:
-    fc_dims: [56, 32]
+    # In size is 1(=node_factor) * encoded nodes('node_out_dim') 
+    # + 1 * encoded edges (edge_out_dim)
+    # Make sure last layer's output dimensions 
+    # equal the encoded node feature size
+    fc_dims: [56, 4]
     dropout_p: 0
     use_batchnorm: False
 
+  # only classifies edges 
   classifier_feats_dict:
-    edge_in_dim: 16
+    # edge input must be same output/last layer of edge model, edge_model_feats_dict[fc_dims][-1]
+    edge_in_dim: 2
     edge_fc_dims: [8]
-    edge_out_dim: 1
+    edge_out_dim: 1 # only 1 output for binary classification
     dropout_p: 0
     use_batchnorm: False
-
-  cnn_params:
-    arch: resnet50
-    model_weights_path:
-      resnet50: trained_models/reid/resnet50_market_cuhk_duke.tar-232

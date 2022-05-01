@@ -5,7 +5,6 @@ This is serves as inspiration for our own code
 '''
 import sacred
 from sacred import Experiment
-from zmq import device
 
 # from mot_neural_solver.utils.evaluation import MOTMetricsLogger
 from utils.misc import make_deterministic, get_run_str_and_save_dir, ModelCheckpoint
@@ -23,7 +22,6 @@ from pytorch_lightning.loggers import TensorBoardLogger
 #For DATALOADER
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 from torch_geometric.loader import DataLoader
-from tqdm import tqdm
 ##################
 
 from sacred import SETTINGS
@@ -31,10 +29,10 @@ SETTINGS.CONFIG.READ_ONLY_CONFIG=False
 
 ex = Experiment()
 
-ex.add_config('configs/testing_nuscenes_dataloader_ws.yaml')
+ex.add_config('configs/tracking_mini_train_ws.yaml')
 
 # Config for naming record files
-ex.add_config({'run_id': 'test_run_gpu1',
+ex.add_config({'run_id': 'train_w_default_config',
                'add_date': True,
                'cross_val_split': None})
 
@@ -71,33 +69,34 @@ def main(_config, _run):
     
     #########################################
     # Load Data 
-    train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_train",device=_config['gpu_settings']['torch_device'])
+    # nusc = NuScenes(version='v1.0-mini', dataroot=r"C:\Users\maxil\Documents\projects\master_thesis\mini_nuscenes", verbose=True)
+    # nusc = NuScenes(version='v1.0-trainval', dataroot='/media/HDD2/Datasets/mini_nusc', verbose=True)
+    
+    train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_train", device=_config['gpu_settings']['torch_device'])
+
     train_loader = DataLoader(train_dataset,batch_size = _config['train_params']['batch_size'])
 
     eval_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_val",device=_config['gpu_settings']['torch_device'])
-    eval_loader = DataLoader(eval_dataset,batch_size = _config['train_params']['batch_size'])
-    
-    ###################################
-    for i, batch in enumerate(train_loader):
-        if(i< 10):
-            print("Train-Batch:",i)
-            print(batch)
-        else:
-            break
-    for i, batch in enumerate(eval_loader):
-        if(i< 10):
-            print("Eval-Batch:",i)
-            print(batch)
-        else:
-            break
-    # accelerator = _config['gpu_settings']['device_type']
-    # devices = _config['gpu_settings']['device_id']
 
-    
-    trainer = Trainer(
-                    gpus=_config['gpu_settings']['device_id'],
+    eval_loader = DataLoader(eval_dataset,batch_size = _config['train_params']['batch_size'])
+    ###################################
+
+    # Validation percentage check is deprecated in favour of limit_val_batches 
+    # val_percent_check = _config['eval_params']['val_percent_check']
+    # limit_val_batches = _config['eval_params']['val_percent_check']
+
+    #nb_sanity_val_steps is deprecated
+
+    # check_val_every_n_epoch=_config['eval_params']['check_val_every_n_epoch'] is deprecated
+    # default_save_path=osp.join(OUTPUT_PATH, 'experiments', run_str) is deprecated
+    accelerator = _config['gpu_settings']['device_type']
+    devices = _config['gpu_settings']['device_id']
+
+    trainer = Trainer(gpus=devices,
                     callbacks=[ckpt_callback],
                     max_epochs=_config['train_params']['num_epochs'],
                     logger =logger,
                     )
+
+    
     trainer.fit(model,train_loader,eval_loader)

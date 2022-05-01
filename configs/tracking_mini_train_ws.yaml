@@ -7,8 +7,8 @@ gpu_settings:
 ckpt_path:
 
 train_params:
-  batch_size: 4
-  num_epochs: 100
+  batch_size: 8
+  num_epochs: 400
   optimizer:
     type: Adam
     args:
@@ -21,7 +21,7 @@ train_params:
       step_size: 7
       gamma: 0.5
 
-  num_workers: 1 # Used for dataloaders
+  num_workers: 4 # Used for dataloaders
   save_every_epoch: False # Determines if every a checkpoint will be saved for every epoch
   save_epoch_start: 1 # If the arg above is set to True, determines the first epoch after which we start saving ckpts
   tensorboard: True
@@ -29,7 +29,7 @@ train_params:
 dataset_params:
   # Dataset Processing params:
   dataset_version: 'v1.0-trainval'
-  dataroot : '/media/HDD2/Datasets/nuscenes2'
+  dataroot : '/media/HDD2/Datasets/mini_nusc'
   is_windows_path : True
   # Edge_Label Type
   label_type: "binary"
@@ -58,8 +58,8 @@ eval_params:
 
 graph_model_params:
   node_agg_fn: 'sum'
-  num_enc_steps: 5  # Number of message passing steps
-  num_class_steps: 3  # Number of message passing steps during feature vectors are classified (after Message Passing)
+  num_enc_steps: 12  # Number of message passing steps
+  num_class_steps: 8  # Number of message passing steps during feature vectors are classified (after Message Passing)
   reattach_initial_nodes: False  # Determines whether initially encoded node feats are used during node updates
   reattach_initial_edges: True  # Determines whether initially encoded edge feats are used during node updates
 

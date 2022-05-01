@@ -14,13 +14,13 @@ import pathlib
 PROJECT_PATH = pathlib.Path(__file__).parent.parent.absolute()
 
 # Absolute path where datasets and processed data (e.g. precomputed embeddings) will be stored
-# DATA_PATH = '/media/HDD2/Datasets/mini_nusc'
+DATA_PATH = '/media/HDD2/Datasets/mini_nusc'
 # DATA_PATH = '/media/HDD2/Datasets/nuscenes2'
-DATA_PATH = None
+# DATA_PATH = None
 
 # Absolute path where results (e.g. output result files, model weights) will be stored
-# OUTPUT_PATH = '/media/HDD2/students/maximilian/output'
-OUTPUT_PATH = None
+OUTPUT_PATH = '/media/HDD2/students/maximilian/spatio-temporal-gnn'
+# OUTPUT_PATH = None
 
 if DATA_PATH is None:
     DATA_PATH = osp.join(PROJECT_PATH, 'data')

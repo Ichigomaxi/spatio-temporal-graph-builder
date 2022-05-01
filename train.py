@@ -29,8 +29,7 @@ SETTINGS.CONFIG.READ_ONLY_CONFIG=False
 
 ex = Experiment()
 
-ex.add_config('configs/tracking_cfg.yaml')
-# ex.add_config('configs/debug_config_file.yaml')
+ex.add_config('configs/tracking_mini_train_ws.yaml')
 
 # Config for naming record files
 ex.add_config({'run_id': 'train_w_default_config',
@@ -73,11 +72,11 @@ def main(_config, _run):
     # nusc = NuScenes(version='v1.0-mini', dataroot=r"C:\Users\maxil\Documents\projects\master_thesis\mini_nuscenes", verbose=True)
     # nusc = NuScenes(version='v1.0-trainval', dataroot='/media/HDD2/Datasets/mini_nusc', verbose=True)
     
-    train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_train", device=_config['gpu_settings']['torch_device'])
+    train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="train", device=_config['gpu_settings']['torch_device'])
 
     train_loader = DataLoader(train_dataset,batch_size = _config['train_params']['batch_size'])
 
-    eval_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_val",device=_config['gpu_settings']['torch_device'])
+    eval_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="val",device=_config['gpu_settings']['torch_device'])
 
     eval_loader = DataLoader(eval_dataset,batch_size = _config['train_params']['batch_size'])
     ###################################
@@ -95,11 +94,9 @@ def main(_config, _run):
 
     trainer = Trainer(gpus=devices,
                     callbacks=[ckpt_callback],
-                    weights_summary = None,
-                    checkpoint_callback=False,
                     max_epochs=_config['train_params']['num_epochs'],
                     logger =logger,
                     )
 
     
-    trainer.fit(model,train_loader)
+    trainer.fit(model,train_loader,eval_loader)

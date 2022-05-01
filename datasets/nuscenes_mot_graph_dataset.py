@@ -92,7 +92,9 @@ class NuscenesMOTGraphDataset(object):
             # If less than dataset_params['max_frame_dist'] frames counted then we filter it out
             if not (i < self.dataset_params['max_frame_dist']):
                 filtered_sample_list.append(scene_sample_tuple)
-        
+        #TODO
+        # Filter if num_objects less than KNN -param
+
         return filtered_sample_list
 
     def get_from_frame_and_seq(self, seq_name:str, start_frame:str,

@@ -77,6 +77,8 @@ class NuscenesMotGraph(object):
             # filter out all object that are not of class self.filterBoxes_categoryQuery
             if( self.filterBoxes_categoryQuery is not None):
                 boxes = filter_boxes(self.nuscenes_handle, boxes= boxes, categoryQuery= self.filterBoxes_categoryQuery)
+                if len(boxes)<= self.KNN_PARAM_SPATIAL or len(boxes)<= self.KNN_PARAM_TEMPORAL:
+                    print("num of filtered objects is smaller than the KNN parameters")
             boxes_dict[i] = boxes
 
             #Move to next sample
@@ -146,7 +148,8 @@ class NuscenesMotGraph(object):
             edge_ixs: torch.tensor withs shape (2, num_edges) describes indices of edges, 
             edge_feats_dict: dict with edge features, mainly torch.Tensors e.g (num_edges, num_edge_features)
         """
-
+        # for key in self.graph_dataframe["boxes_dict"]:
+        #     print("Num objects: ",len(self.graph_dataframe["boxes_dict"][key]),' in frame: ', key)
         # Compute Spatial Edges
         t_spatial_edge_ixs = get_and_compute_spatial_edge_indices(
                     self.graph_dataframe,
