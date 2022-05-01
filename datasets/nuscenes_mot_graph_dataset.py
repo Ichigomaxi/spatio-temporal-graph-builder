@@ -1,6 +1,7 @@
 
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
 from datasets.NuscenesDataset import NuscenesDataset
+import torch
 
 class NuscenesMOTGraphDataset(object):
     """
@@ -11,13 +12,15 @@ class NuscenesMOTGraphDataset(object):
     Its main method is 'get_from_frame_and_seq', where given sequence name and a starting frame position, a graph is
     returned.
     """
-    def __init__(self, dataset_params, mode, splits =None, logger = None):
+    def __init__(self, dataset_params, mode, splits =None, logger = None, 
+                    device:str = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         
         assert mode in NuscenesDataset.ALL_SPLITS
 
         self.dataset_params = dataset_params
         self.mode = mode
         self.logger = logger
+        self.device = device
 
         self.nuscenes_dataset = NuscenesDataset(self.dataset_params["dataset_version"],
                                                 self.dataset_params["dataroot"])
@@ -112,8 +115,8 @@ class NuscenesMOTGraphDataset(object):
                                     nuscenes_handle = self.nuscenes_handle,
                                     start_frame = start_frame,
                                     max_frame_dist = self.dataset_params['max_frame_dist'],
-                                    filterBoxes_categoryQuery= self.dataset_params["filterBoxes_categoryQuery"]
-                                    )
+                                    filterBoxes_categoryQuery= self.dataset_params["filterBoxes_categoryQuery"],
+                                    device= self.device)
 
         # Construct the Graph Network's input
         mot_graph.construct_graph_object()

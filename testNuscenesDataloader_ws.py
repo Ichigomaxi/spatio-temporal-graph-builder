@@ -20,11 +20,9 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 ###############
 #For DATALOADER
-from nuscenes.nuscenes import NuScenes
-from nuscenes.utils.splits import create_splits_scenes
-from datasets.nuscenes_mot_graph import NuscenesMotGraph
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 from torch_geometric.loader import DataLoader
+from tqdm import tqdm
 ##################
 
 from sacred import SETTINGS
@@ -32,8 +30,8 @@ SETTINGS.CONFIG.READ_ONLY_CONFIG=False
 
 ex = Experiment()
 
-ex.add_config('configs/testing_nuscenes_dataloader.yaml')
-# ex.add_config('configs/debug_config_file.yaml')
+# ex.add_config('configs/testing_nuscenes_dataloader.yaml')
+ex.add_config('configs/testing_nuscenes_dataloader_ws.yaml')
 
 # Config for naming record files
 ex.add_config({'run_id': 'train_w_default_config',
@@ -75,31 +73,47 @@ def main(_config, _run):
     # Load Data 
     # nusc = NuScenes(version='v1.0-mini', dataroot=r"C:\Users\maxil\Documents\projects\master_thesis\mini_nuscenes", verbose=True)
     
-    train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_train")
-    train_objectList = []
-    for i in range(len(train_dataset)):
-        train_objectList.append(train_dataset[i])
-    train_loader = DataLoader(train_objectList,batch_size = 2)
+    train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_train", device=_config['gpu_settings']['torch_device'])
+
+    # train_objectList = []
+    # for i in tqdm( range(len(train_dataset)), desc="Train DataLoader"):
+    #     # print("Train loader Iteration:",i)
+    #     train_objectList.append(train_dataset[i])
+    # train_loader = DataLoader(train_objectList,batch_size = 2)
     
     # Test behaviour if Dataset object inserted into DataLoader
-    train_loader_2 = DataLoader(train_dataset,batch_size = 2)
+    train_loader = DataLoader(train_dataset,batch_size = _config['train_params']['batch_size'])
 
-    eval_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_val")
-    eval_objectList = []
-    for i in range(len(eval_dataset)):
-        eval_objectList.append(eval_dataset[i])
-    eval_loader = DataLoader(eval_objectList,batch_size = 2)
+    eval_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_val",device=_config['gpu_settings']['torch_device'])
 
+    # eval_objectList = []
+    # for i in tqdm(range(len(eval_dataset)), desc= "Eval DataLoader" ):
+    #     # print("Eval loader Iteration:",i)
+    #     eval_objectList.append(eval_dataset[i])
+    # eval_loader = DataLoader(eval_objectList,batch_size = 2)
+
+    eval_loader = DataLoader(eval_dataset,batch_size = _config['train_params']['batch_size'])
     
     ###################################
-
+    for i, batch in enumerate(train_loader):
+        if(i< 10):
+            print("Train-Batch:",i)
+            print(batch)
+        else:
+            break
+    for i, batch in enumerate(eval_loader):
+        if(i< 10):
+            print("Eval-Batch:",i)
+            print(batch)
+        else:
+            break
     # accelerator = _config['gpu_settings']['device_type']
     # devices = _config['gpu_settings']['device_id']
 
-    trainer = Trainer(callbacks=[ckpt_callback],
-                    max_epochs=_config['train_params']['num_epochs'],
-                    logger =logger,
-                    )
+    # trainer = Trainer(callbacks=[ckpt_callback],
+    #                 max_epochs=_config['train_params']['num_epochs'],
+    #                 logger =logger
+    #                 )
 
     
-    trainer.fit(model,train_loader,eval_loader)
+    # trainer.fit(model,train_loader,eval_loader)
