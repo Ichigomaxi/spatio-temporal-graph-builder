@@ -404,7 +404,7 @@ def encode_edge_types(
             edge_type_mask:torch.Tensor, 
             device:torch.device)-> torch.Tensor:
     # Init one hot encoding tensor
-    t_edge_types_one_hot = torch.zeros(edge_type_mask.shape[0],len(edge_types), dtype=torch.uint8).to(device)
+    t_edge_types_one_hot = torch.zeros(edge_type_mask.shape[0],len(edge_types), dtype=torch.float32).to(device)
     # Get one dimensional tensor(num_edge, edge_type)
     t_edge_types = torch.where(edge_type_mask[:,0]==True,1,0).to(device)
     t_edge_types.unsqueeze_(1)

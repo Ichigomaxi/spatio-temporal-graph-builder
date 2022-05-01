@@ -12,6 +12,9 @@ plots/rotate_axes3d_sgskip.py
 demo_logs/pytorch/small_scale/events*
 demo_logs/pytorch/small_scale/plugins/Open3D/*
 .vscode/launch.json
-
-
+# Misc
 test_run_cpu5/
+# Pipeline outputs/ model weight checkpoints/
+checkpoints/
+# Logging outputs
+output/

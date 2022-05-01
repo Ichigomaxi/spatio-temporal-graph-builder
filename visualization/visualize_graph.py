@@ -227,7 +227,7 @@ def main(mode:str = "single", filterBoxes_categoryQuery="vehicle.car"):
     for i, mot_graph in enumerate(MotGraphList):
         geometry_list_input = visualize_input_graph(mot_graph)
         geometry_list_output = visualize_output_graph(mot_graph)
-        geometry_list_basic = visualize_basic_graph(mot_graph)
+        # geometry_list_basic = visualize_basic_graph(mot_graph)
 
         if len(geometry_list_input) != 0:
             print("Input-Graph: starting {}-th visualization!".format(i))
@@ -239,7 +239,7 @@ def main(mode:str = "single", filterBoxes_categoryQuery="vehicle.car"):
             o3d.visualization.draw_geometries(geometry_list_output)
             print("Output-Graph:stoped {}-th visualization!".format(i))
 
-        if len(geometry_list_basic) != 0: 
-            print("starting {}-th visualization!".format(i))
-            o3d.visualization.draw_geometries(geometry_list_basic)
-            print("stoped {}-th visualization!".format(i))
+        # if len(geometry_list_basic) != 0: 
+        #     print("starting {}-th visualization!".format(i))
+        #     o3d.visualization.draw_geometries(geometry_list_basic)
+        #     print("stoped {}-th visualization!".format(i))

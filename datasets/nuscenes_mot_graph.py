@@ -30,6 +30,7 @@ class NuscenesMotGraph(object):
 
     def __init__(self,nuscenes_handle:NuScenes, start_frame:str , max_frame_dist:int = 3,
                     filterBoxes_categoryQuery:Union[str,List[str]] = None,
+                    construction_possibility_checked = True,
                     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
 
         self.max_frame_dist = max_frame_dist
@@ -45,7 +46,9 @@ class NuscenesMotGraph(object):
         #  for pre and post-processing apart from pytorch computations
         self.graph_dataframe:Dict = None
 
-        assert self.is_possible2construct, "Graph object cannot be be built! Probably there are not enough frames available before the scene ends"
+        if construction_possibility_checked:
+            assert self.is_possible2construct, "Graph object cannot be be built! Probably there are not enough frames available before the scene ends"
+        
         if self.is_possible2construct:
             self.graph_dataframe = self._construct_graph_dataframe()
 
@@ -287,7 +290,7 @@ class NuscenesMotGraph(object):
 
         # Concatenate list of edge_labels
         if label_type == "binary":
-            flow_labels = torch.tensor(flow_labels,dtype=torch.uint8)
+            flow_labels = torch.tensor(flow_labels,dtype=torch.float32)
         elif label_type == "multiclass":
             flow_labels = torch.stack(flow_labels, dim = 0)
 
@@ -381,11 +384,12 @@ class NuscenesMotGraph(object):
             t_edge_ixs = t_edge_ixs.T
 
         # Prepare Inputs/ bring into apropiate shape to generate graph/object
+        common_dtype = torch.float
         # Node Features
-        t_node_features = self._load_node_features(node_feature_mode)
+        t_node_features = self._load_node_features(node_feature_mode).type(common_dtype)
         
         # Edge Features
-        t_edge_feats = edge_feats_dict[edge_feature_mode]
+        t_edge_feats = edge_feats_dict[edge_feature_mode].type(common_dtype)
         
         # Duplicate Edges to make Graph undirected
         t_edge_feats = torch.cat((t_edge_feats, t_edge_feats), dim = 0).to(self.device)
