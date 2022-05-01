@@ -88,6 +88,7 @@ class NuscenesDataset(object):
                     start_frame=sample_token_current,
                     max_frame_dist = 3, 
                     filterBoxes_categoryQuery=filterBoxes_categoryQuery,
+                    construction_possibility_checked= False,
                     device= device)
         is_possible2construct = object.is_possible2construct
 
@@ -163,6 +164,7 @@ class NuscenesDataset(object):
                                 start_frame=sample_token_current,
                                 max_frame_dist = 3, 
                                 filterBoxes_categoryQuery=filterBoxes_categoryQuery,
+                                construction_possibility_checked= False,
                                 device= device)
                     is_possible2construct = object.is_possible2construct
                     if is_possible2construct:
@@ -173,7 +175,9 @@ class NuscenesDataset(object):
                 object = NuscenesMotGraph(nuscenes_handle = nusc,
                                 start_frame=sample_token_current,
                                 max_frame_dist = 3,  
-                                filterBoxes_categoryQuery=filterBoxes_categoryQuery ,device= device)
+                                filterBoxes_categoryQuery=filterBoxes_categoryQuery ,
+                                construction_possibility_checked= False,
+                                device= device)
                 is_possible2construct = object.is_possible2construct
                 if is_possible2construct:
                     object.construct_graph_object()

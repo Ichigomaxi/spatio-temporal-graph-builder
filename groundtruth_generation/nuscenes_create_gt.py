@@ -41,7 +41,7 @@ def convert_into_one_hot_encoding(
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )-> torch.Tensor:
 
-    label_one_hot = torch.zeros(len(edge_label_classes), dtype=torch.uint8, device = device)
+    label_one_hot = torch.zeros(len(edge_label_classes), dtype=torch.float32, device = device)
 
     if( label == edge_label_classes.different_instance ):
         label_one_hot[edge_label_classes.different_instance] = 1

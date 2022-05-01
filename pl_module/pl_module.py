@@ -18,6 +18,7 @@ from torch.optim import lr_scheduler as lr_sched_module
 from torch.nn import functional as F
 
 import pytorch_lightning as pl
+from datasets.NuscenesDataset import NuscenesDataset
 
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
@@ -52,13 +53,12 @@ class MOTNeuralSolver(pl.LightningModule):
         return model
 
     # def _get_data(self, mode, return_data_loader = True):
-    #     assert mode in ('train', 'val', 'test')
+    #     assert mode in NuscenesDataset.ALL_SPLITS
 
     #     dataset = NuscenesMOTGraphDataset(dataset_params=self.hparams['dataset_params'],
     #                               mode=mode,
-    #                               cnn_model=self.cnn_model,
-    #                               splits= self.hparams['data_splits'][mode],
-    #                               logger=None)
+    #                               splits= None,
+    #                               logger= None)
 
     #     if return_data_loader and len(dataset) > 0:
     #         train_dataloader = DataLoader(dataset,
@@ -96,23 +96,27 @@ class MOTNeuralSolver(pl.LightningModule):
             return optimizer
 
     def _compute_loss(self, outputs, batch):
-        # Define Balancing weight
-        positive_vals = batch.edge_labels.sum()
 
-        if positive_vals:
-            pos_weight = (batch.edge_labels.shape[0] - positive_vals) / positive_vals
+        if self.hparams['dataset_params']['label_type'] == "binary":
+            # Define Balancing weight
+            positive_vals = batch.edge_labels.sum()
 
-        else: # If there are no positives labels, avoid dividing by zero
-            pos_weight = 0
+            if positive_vals:
+                pos_weight = (batch.edge_labels.shape[0] - positive_vals) / positive_vals
 
-        # Compute Weighted BCE:
-        loss = 0
-        num_steps = len(outputs['classified_edges'])
-        for step in range(num_steps):
-            loss += F.binary_cross_entropy_with_logits(outputs['classified_edges'][step].view(-1),
-                                                            batch.edge_labels.view(-1),
-                                                            pos_weight= pos_weight)
-        return loss
+            else: # If there are no positives labels, avoid dividing by zero
+                pos_weight = 0
+
+            # Compute Weighted BCE:
+            loss = 0
+            num_steps = len(outputs['classified_edges'])
+            for step in range(num_steps):
+                loss += F.binary_cross_entropy_with_logits(outputs['classified_edges'][step].view(-1),
+                                                                batch.edge_labels.view(-1),
+                                                                pos_weight= pos_weight)
+            return loss
+        else: 
+            return 0
 
     def _train_val_step(self, batch, batch_idx, train_val):
         device = (next(self.model.parameters())).device
@@ -130,13 +134,21 @@ class MOTNeuralSolver(pl.LightningModule):
             return log
 
     def training_step(self, batch, batch_idx):
-        return self._train_val_step(batch, batch_idx, 'train')
+        log_dict = self._train_val_step(batch, batch_idx, 'train')
+        self.log_dict(log_dict)
+        # self.log("train_val",log_dict['log'])
+
+        return log_dict
 
     def validation_step(self, batch, batch_idx):
         # self.log("val_loss", loss)
-        return self._train_val_step(batch, batch_idx, 'val')
+        log_dict = self._train_val_step(batch, batch_idx, 'val')
+        self.log_dict(log_dict)
+        return log_dict
 
     def validation_epoch_end(self, outputs):
         metrics = pd.DataFrame(outputs).mean(axis=0).to_dict()
         metrics = {metric_name: torch.as_tensor(metric) for metric_name, metric in metrics.items()}
-        return {'val_loss': metrics['loss/val'], 'log': metrics}
+        log_dict = {'val_loss_epochend': metrics['loss/val'], 'log_epochend': metrics}
+        self.log_dict(log_dict)
+        return log_dict

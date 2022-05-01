@@ -25,6 +25,7 @@ from nuscenes.utils.splits import create_splits_scenes
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 from torch_geometric.loader import DataLoader
+from tqdm import tqdm 
 ##################
 
 from sacred import SETTINGS
@@ -32,13 +33,13 @@ SETTINGS.CONFIG.READ_ONLY_CONFIG=False
 
 ex = Experiment()
 
-ex.add_config('configs/testing_nuscenes_dataloader.yaml')
+ex.add_config('configs/testing_nuscenes_dataloader_laptop.yaml')
 # ex.add_config('configs/debug_config_file.yaml')
 
-# Config for naming record files
-ex.add_config({'run_id': 'train_w_default_config',
-               'add_date': True,
-               'cross_val_split': None})
+# # Config for naming record files
+# ex.add_config({'run_id': 'train_w_default_config',
+#                'add_date': True,
+#                'cross_val_split': None})
 
 @ex.config
 def cfg( eval_params, dataset_params, graph_model_params, data_splits):
@@ -76,31 +77,30 @@ def main(_config, _run):
     # nusc = NuScenes(version='v1.0-mini', dataroot=r"C:\Users\maxil\Documents\projects\master_thesis\mini_nuscenes", verbose=True)
     
     train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_train")
-    # train_objectList = []
-    # for i in range(len(train_dataset)):
-    #     train_objectList.append(train_dataset[i])
-    # train_loader = DataLoader(train_objectList,batch_size = 2)
-    
-    # Test behaviour if Dataset object inserted into DataLoader
-    train_loader = DataLoader(train_dataset,batch_size = 2)
+    train_loader = DataLoader(train_dataset,batch_size = 2, num_workers=_config['train_params']['num_workers'])
 
     eval_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_val")
-    # eval_objectList = []
-    # for i in range(len(eval_dataset)):
-    #     eval_objectList.append(eval_dataset[i])
-    # eval_loader = DataLoader(eval_objectList,batch_size = 2)
-    eval_loader = DataLoader(eval_dataset,batch_size = 2)
+    eval_loader = DataLoader(eval_dataset,batch_size = 2, num_workers=_config['train_params']['num_workers'])
     
     ###################################
+    # Uncomment for testing if loader works
+    # for i, batch in enumerate(tqdm(train_loader)):
+    #     if i < 4:
+    #         print("Train batch", i, ":")
+    #         print(batch)
+    #     else:
+    #         break
 
-    # accelerator = _config['gpu_settings']['device_type']
-    # devices = _config['gpu_settings']['device_id']
-
+    # for i, batch in enumerate(tqdm(eval_loader)):
+    #     if i < 4:
+    #         print("Eval batch", i, ":")
+    #         print(batch)
+    #     else:
+    #         break
     
     trainer = Trainer(callbacks=[ckpt_callback],
                     max_epochs=_config['train_params']['num_epochs'],
                     logger =logger,
                     )
 
-    
     trainer.fit(model,train_loader,eval_loader)
