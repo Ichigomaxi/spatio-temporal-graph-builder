@@ -29,12 +29,12 @@ SETTINGS.CONFIG.READ_ONLY_CONFIG=False
 
 ex = Experiment()
 
-ex.add_config('configs/tracking_mini_train_ws.yaml')
+ex.add_config('configs/tracking_cfg.yaml')
 
 # Config for naming record files
-ex.add_config({'run_id': 'train_w_default_config',
-               'add_date': True,
-               'cross_val_split': None})
+# ex.add_config({'run_id': 'train_w_default_config',
+#                'add_date': True,
+#                'cross_val_split': None})
 
 @ex.config
 def cfg( eval_params, dataset_params, graph_model_params, data_splits):
@@ -45,7 +45,6 @@ def cfg( eval_params, dataset_params, graph_model_params, data_splits):
     # If we're training on all the available training data, disable validation
     if data_splits['train'] =='all_train' or data_splits['val'] is None:
         data_splits['val'] = []
-
 
 @ex.automain
 def main(_config, _run):
@@ -59,7 +58,7 @@ def main(_config, _run):
     run_str, save_dir = get_run_str_and_save_dir(_config['run_id'], _config['cross_val_split'], _config['add_date'])
 
     if _config['train_params']['tensorboard']:
-        logger = TensorBoardLogger(OUTPUT_PATH, name='experiments', version=run_str)
+        logger = TensorBoardLogger(_config['output_path'], name='experiments', version=run_str)
 
     else:
         logger = None
@@ -72,11 +71,14 @@ def main(_config, _run):
     # nusc = NuScenes(version='v1.0-mini', dataroot=r"C:\Users\maxil\Documents\projects\master_thesis\mini_nuscenes", verbose=True)
     # nusc = NuScenes(version='v1.0-trainval', dataroot='/media/HDD2/Datasets/mini_nusc', verbose=True)
     
-    train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="train", device=_config['gpu_settings']['torch_device'])
+    train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode =_config["train_dataset_mode"], device=_config['gpu_settings']['torch_device'])
 
     train_loader = DataLoader(train_dataset,batch_size = _config['train_params']['batch_size'])
 
-    eval_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="val",device=_config['gpu_settings']['torch_device'])
+    eval_dataset = NuscenesMOTGraphDataset(_config['dataset_params'],
+                                    mode =_config["eval_dataset_mode"],
+                                    nuscenes_handle = train_dataset.get_nuscenes_handle(),
+                                    device =_config['gpu_settings']['torch_device'])
 
     eval_loader = DataLoader(eval_dataset,batch_size = _config['train_params']['batch_size'])
     ###################################

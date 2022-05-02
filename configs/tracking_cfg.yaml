@@ -1,10 +1,17 @@
+run_id: 'train_w_default_config'
+add_date: True
+cross_val_split:  
+
+output_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn'
+ckpt_path: 'experiments/mot20_mot_mpnet_epoch_021.ckpt' # Only used during evaluation
+train_dataset_mode: "train"
+eval_dataset_mode: "val"
+
 gpu_settings:
   device_type: "gpu"
   # Specify which GPUs to use
   device_id: [1] # Specifically takes the gpu associated with cuda:1 
   torch_device: 'cuda:1'
-
-ckpt_path:
 
 train_params:
   batch_size: 4
@@ -37,7 +44,8 @@ dataset_params:
   # Filter Parameter
   # Contains a list of nuscenes class labels.
   # Only detections from these clases will be loaded for the graph
-  filterBoxes_categoryQuery: ['vehicle.car'] 
+  # filterBoxes_categoryQuery: ['vehicle.car'] 
+  filterBoxes_categoryQuery: ['vehicle.car','human.pedestrian'] 
 
   # Data Augmentation Params
   augment: False # Determines whether data augmentation is performed
@@ -46,6 +54,9 @@ dataset_params:
   max_frame_dist: 3 # Maximum number of frames contained in each graph sampled graph
   node_feature_mode : "centers_and_time" # determines the included node features 
   edge_feature_mode : "edge_type" # determines the included edge features 
+
+  # Choose how Graph construction should be handled
+  adapt_knn_param: True # if number of objects is below the KNN-Param then K
 
 data_splits: # See nuscenes.datasplit()
   train: ['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']

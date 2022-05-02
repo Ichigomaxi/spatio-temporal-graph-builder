@@ -1,10 +1,17 @@
+run_id: 'train_mini_continuation_default_config'
+add_date: True
+cross_val_split: 
+
+output_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn'
+ckpt_path: 'experiments/05-01_18:46_train_w_default_config/checkpoints/epoch=399-step=15599.ckpt' # Only used during evaluation 
+train_dataset_mode: "mini_train"
+eval_dataset_mode: "mini_val"
+
 gpu_settings:
   device_type: "gpu"
   # Specify which GPUs to use
   device_id: [1] # Specifically takes the gpu associated with cuda:1 
   torch_device: 'cuda:1'
-
-ckpt_path:
 
 train_params:
   batch_size: 8
@@ -46,6 +53,9 @@ dataset_params:
   max_frame_dist: 3 # Maximum number of frames contained in each graph sampled graph
   node_feature_mode : "centers_and_time" # determines the included node features 
   edge_feature_mode : "edge_type" # determines the included edge features 
+
+  # Choose how Graph construction should be handled
+  adapt_knn_param: True # if number of objects is below the KNN-Param then K
 
 data_splits: # See nuscenes.datasplit()
   train: ['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']

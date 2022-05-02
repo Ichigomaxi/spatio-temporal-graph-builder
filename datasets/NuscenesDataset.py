@@ -1,5 +1,6 @@
 
 from re import T
+from tkinter.messagebox import NO
 from nuscenes.nuscenes import NuScenes
 from torch_geometric.data import Dataset
 
@@ -15,7 +16,8 @@ class NuscenesDataset(object):
                   "mini_train", "mini_val"}
 
     def __init__(self, dataset_version: str='v1.0-trainval',
-                        dataroot: str='/media/HDD2/Datasets/mini_nusc', is_windows_path = False):
+                        dataroot: str='/media/HDD2/Datasets/mini_nusc', is_windows_path = False,
+                        nuscenes_handle:NuScenes = None):
         
         if is_windows_path: 
             self.dataroot = r"" + dataroot
@@ -26,10 +28,13 @@ class NuscenesDataset(object):
         self.version = dataset_version
 
         # Init data handler
-        self.nuscenes_handle = NuScenes( \
-                                version = dataset_version,\
-                                dataroot = dataroot,\
-                                verbose=True)     
+        if nuscenes_handle is not None:
+            self.nuscenes_handle = nuscenes_handle
+        else:
+            self.nuscenes_handle = NuScenes( \
+                                    version = dataset_version,\
+                                    dataroot = dataroot,\
+                                    verbose=True)     
         
         #Set of strings
         self.splits: Set[str] = set(s for s in self.ALL_SPLITS if s.split("_")[0] in dataset_version)

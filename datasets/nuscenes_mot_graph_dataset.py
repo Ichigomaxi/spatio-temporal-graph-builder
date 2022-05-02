@@ -1,6 +1,7 @@
 
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
 from datasets.NuscenesDataset import NuscenesDataset
+from nuscenes.nuscenes import NuScenes
 import torch
 
 class NuscenesMOTGraphDataset(object):
@@ -12,7 +13,8 @@ class NuscenesMOTGraphDataset(object):
     Its main method is 'get_from_frame_and_seq', where given sequence name and a starting frame position, a graph is
     returned.
     """
-    def __init__(self, dataset_params, mode, splits =None, logger = None, 
+    def __init__(self, dataset_params, mode, splits =None, logger = None,
+                    nuscenes_handle: NuScenes = None,
                     device:str = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         
         assert mode in NuscenesDataset.ALL_SPLITS
@@ -22,8 +24,15 @@ class NuscenesMOTGraphDataset(object):
         self.logger = logger
         self.device = device
 
-        self.nuscenes_dataset = NuscenesDataset(self.dataset_params["dataset_version"],
+        self.nuscenes_dataset = None
+        if nuscenes_handle is not None:
+            self.nuscenes_dataset = NuscenesDataset(self.dataset_params["dataset_version"],
+                                                self.dataset_params["dataroot"],
+                                                nuscenes_handle=nuscenes_handle)
+        else:
+            self.nuscenes_dataset = NuscenesDataset(self.dataset_params["dataset_version"],
                                                 self.dataset_params["dataroot"])
+
         
         self.nuscenes_handle = self.nuscenes_dataset.nuscenes_handle
 
@@ -94,8 +103,21 @@ class NuscenesMOTGraphDataset(object):
                 filtered_sample_list.append(scene_sample_tuple)
         #TODO
         # Filter if num_objects less than KNN -param
+        # mot_graph = NuscenesMotGraph(
+        #                             nuscenes_handle = self.nuscenes_handle,
+        #                             start_frame = start_frame,
+        #                             max_frame_dist = self.dataset_params['max_frame_dist'],
+        #                             filterBoxes_categoryQuery= self.dataset_params["filterBoxes_categoryQuery"],
+        #                             adapt_knn_param = self.dataset_params["adapt_knn_param"],
+        #                             device= self.device)
 
         return filtered_sample_list
+
+    def get_nuscenes_handle(self):
+        """
+        Returns nuscens handle
+        """
+        return self.nuscenes_handle
 
     def get_from_frame_and_seq(self, seq_name:str, start_frame:str,
                                return_full_object:bool = False,
@@ -118,6 +140,7 @@ class NuscenesMOTGraphDataset(object):
                                     start_frame = start_frame,
                                     max_frame_dist = self.dataset_params['max_frame_dist'],
                                     filterBoxes_categoryQuery= self.dataset_params["filterBoxes_categoryQuery"],
+                                    adapt_knn_param = self.dataset_params["adapt_knn_param"],
                                     device= self.device)
 
         # Construct the Graph Network's input

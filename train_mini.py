@@ -32,7 +32,7 @@ ex = Experiment()
 ex.add_config('configs/tracking_mini_train_ws.yaml')
 
 # Config for naming record files
-ex.add_config({'run_id': 'train_w_default_config',
+ex.add_config({'run_id': 'tracking_mini_train_ws',
                'add_date': True,
                'cross_val_split': None})
 
@@ -55,6 +55,8 @@ def main(_config, _run):
     hparams_dict = dict(_config)
     # pytorch lightning model
     model = MOTNeuralSolver(hparams = hparams_dict)
+    
+    model = MOTNeuralSolver.load_from_checkpoint(checkpoint_path=_config['ckpt_path'] if osp.exists(_config['ckpt_path'])  else osp.join(OUTPUT_PATH, _config['ckpt_path']))
 
     run_str, save_dir = get_run_str_and_save_dir(_config['run_id'], _config['cross_val_split'], _config['add_date'])
 
@@ -98,5 +100,4 @@ def main(_config, _run):
                     logger =logger,
                     )
 
-    
     trainer.fit(model,train_loader,eval_loader)

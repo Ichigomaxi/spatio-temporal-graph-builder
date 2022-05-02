@@ -1,6 +1,8 @@
 from collections import defaultdict
 from ctypes import Union
 from enum import Enum
+from tabnanny import check
+from telnetlib import theNULL
 from turtle import distance
 from typing import Dict
 
@@ -178,8 +180,28 @@ def transform_knn_matrix_2_neighborhood_list(t_knn_matrix:torch.Tensor,
     t_neighborhood_list = torch.cat(neighborhood_list, dim = 0)
     return t_neighborhood_list
 
+def is_invalid_frame(graph_dataframe:Dict,knn_param:int):
+    """
+    Returns Dict of Bools, which determine if number of 
+    object centers is lower than knn-parameter
+    Adopts keys from graph_dataframe["centers_dict"] or graph_dataframe["boxes_dict"]
+    """
+    invalid_frames= {}
+
+    for key in graph_dataframe["boxes_dict"]:
+        boxes_i = graph_dataframe["boxes_dict"][key]
+        num_object_in_frame_i = len(boxes_i)
+        if num_object_in_frame_i < knn_param:
+            invalid_frames[key] = True
+        else:
+            invalid_frames[key] = False
+
+    return invalid_frames
+    
 def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
-        knn_param:int, self_referencing_edges:bool = False,
+        knn_param:int, 
+        self_referencing_edges:bool = False,
+        adapt_knn_param = False,
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )-> torch.Tensor:
     '''
@@ -195,6 +217,11 @@ def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
     else:
         knn_param_temp = knn_param
 
+    # check if number of object centers is less than the number of neighbors k needed for  KNN
+    invalid_frames = None
+    if adapt_knn_param:
+        invalid_frames = is_invalid_frame(graph_dataframe, knn_param)
+
     #Init indices list
     spatial_indices = []
 
@@ -204,22 +231,37 @@ def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
     _, centers2 = graph_dataframe["centers_dict"][2]
 
     # Frame t0
+    # Adapt K-NN parameter
+    knn_param_temp_0 = knn_param_temp
+    if invalid_frames is not None:
+        if (invalid_frames[0]):
+            knn_param_temp_0 = len(centers0)
+    
     #Compute K nearest neighbors
-    nbrs_0 = NearestNeighbors(n_neighbors=knn_param_temp, algorithm='ball_tree').fit(centers0)
+    print("knn_param_temp_0: ",knn_param_temp_0)
+    print("length num obj target: ",len(centers0))
+    nbrs_0 = NearestNeighbors(n_neighbors=knn_param_temp_0, algorithm='ball_tree').fit(centers0)
     spatial_indices_0 = nbrs_0.kneighbors(centers0, return_distance=False)
-     #Remove the self referencing edge connection
+    #Remove the self referencing edge connection
     if (self_referencing_edges==False):
         spatial_indices_0 = spatial_indices_0[:, 1:]
 
     t_spatial_indices_0 = torch.from_numpy(spatial_indices_0).to(device)
-    for i in range(t_spatial_indices_0.shape[1]):
-        t_spatial_indices_0[0,:]
     num_spatial_nodes_0 = centers0.shape[0]
     t_edge_indices_0 = transform_knn_matrix_2_neighborhood_list(t_spatial_indices_0, num_spatial_nodes_0).to(device)
     spatial_indices.append(t_edge_indices_0)
 
     #Frame t1
-    nbrs_1 = NearestNeighbors(n_neighbors=knn_param_temp, algorithm='ball_tree').fit(centers1)
+    # Adapt K-NN parameter
+    knn_param_temp_1 = knn_param_temp
+    if invalid_frames is not None:
+        if (invalid_frames[1]) :
+            knn_param_temp_1 = len(centers1)
+        
+    #Compute K nearest neighbors
+    print("knn_param_temp_1: ",knn_param_temp_1)
+    print("length num obj target: ",len(centers1))
+    nbrs_1 = NearestNeighbors(n_neighbors=knn_param_temp_1, algorithm='ball_tree').fit(centers1)
     spatial_indices_1 = nbrs_1.kneighbors(centers1, return_distance=False)
     #Remove the self referencing edge connection
     if (self_referencing_edges==False):
@@ -232,7 +274,18 @@ def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
     spatial_indices.append(t_edge_indices_1)
 
     #Frame t2
-    nbrs_2 = NearestNeighbors(n_neighbors=knn_param_temp, algorithm='ball_tree').fit(centers2)
+    # Adapt K-NN parameter
+    knn_param_temp_2 = knn_param_temp
+    if invalid_frames is not None:
+        if (invalid_frames[2]):
+            knn_param_temp_2 = len(centers2)
+        
+    
+    #Compute K nearest neighbors
+    print("knn_param_temp_2: ",knn_param_temp_2)
+    print("length num obj target: ",len(centers2))
+
+    nbrs_2 = NearestNeighbors(n_neighbors=knn_param_temp_2, algorithm='ball_tree').fit(centers2)
     spatial_indices_2 = nbrs_2.kneighbors(centers2, return_distance=False)
     #Remove the self referencing edge connection
     if (self_referencing_edges==False):
@@ -249,6 +302,7 @@ def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
 
 def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
         knn_param:int, self_referencing_edges:bool = False,
+        adapt_knn_param = False,
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )-> torch.Tensor:
     '''
@@ -264,6 +318,12 @@ def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
     else:
         knn_param_temp = knn_param
     
+    # check if number of object centers is less than the number of neighbors k needed for  KNN
+    invalid_frames = None
+    if adapt_knn_param:
+        invalid_frames = is_invalid_frame(graph_dataframe,knn_param)
+        print('invalid_frames',invalid_frames)
+
     temporal_pointpairs = []
 
     # print(centers_dict)
@@ -275,12 +335,23 @@ def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
     # centers = centers_dict["all"]
     centers = graph_dataframe["centers_list_all"].cpu().numpy()
 
+    # connect frame-0-nodes with frame-1-nodes
+    
+    # Adapt K-NN parameter according to target time-frame 
+    target_frame = 1
+    knn_param_temp_0_to_1 = knn_param_temp
+    if invalid_frames is not None:
+        if (invalid_frames[target_frame]):
+            knn_param_temp_0_to_1 = len(graph_dataframe["centers_dict"][target_frame])
+            print("knn_param_temp_1_to_2: ",knn_param_temp_0_to_1)
+            print("length num obj target: ",len(graph_dataframe["centers_dict"][target_frame]))
+
     for i in range(len(centers0)):
         center = centers0[i]
         center = np.expand_dims(center,axis=0)
         temp = np.append(centers1,center,axis=0)
         #Find nearest_neigbor
-        nearest_neigbor = NearestNeighbors(n_neighbors=knn_param_temp, algorithm='ball_tree').fit(temp)
+        nearest_neigbor = NearestNeighbors(n_neighbors=knn_param_temp_0_to_1, algorithm='ball_tree').fit(temp)
         temporal_indices = nearest_neigbor.kneighbors(temp, return_distance=False)
         #Remove the self referencing edge connection
         if (self_referencing_edges==False):
@@ -297,12 +368,23 @@ def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
                 neighbor_node_global_index ])
 
     # connect frame-0-nodes with frame-2-nodes
+    # Adapt K-NN parameter according to target time-frame 
+    target_frame =  2
+    
+    knn_param_temp_0_to_2 = knn_param_temp
+    if invalid_frames is not None:
+        if (invalid_frames[target_frame]):
+            knn_param_temp_0_to_2 = len(graph_dataframe["centers_dict"][target_frame])
+            print("knn_param_temp_0_to_2: ",knn_param_temp_0_to_2)
+            print("length num obj target: ",len(graph_dataframe["centers_dict"][target_frame]))
+
+
     for i in range(len(centers0)):
         center = centers0[i]
         center = np.expand_dims(center,axis=0)
         temp = np.append(centers2,center,axis=0)
         #Find nearest_neigbor
-        nearest_neigbor = NearestNeighbors(n_neighbors=knn_param_temp, algorithm='ball_tree').fit(temp)
+        nearest_neigbor = NearestNeighbors(n_neighbors=knn_param_temp_0_to_2, algorithm='ball_tree').fit(temp)
         temporal_indices = nearest_neigbor.kneighbors(temp, return_distance=False)
         #Remove the self referencing edge connection
         if (self_referencing_edges==False):
@@ -319,11 +401,20 @@ def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
                 neighbor_node_global_index ])
 
     # connect frame-1-nodes with frame-2-nodes
+    target_frame =  2
+
+    knn_param_temp_1_to_2 = knn_param_temp
+    if invalid_frames is not None:
+        if (invalid_frames[target_frame]):
+            knn_param_temp_1_to_2 = len(graph_dataframe["centers_dict"][target_frame])
+            print("knn_param_temp_1_to_2: ",knn_param_temp_1_to_2)
+            print("length num obj target: ",len(graph_dataframe["centers_dict"][target_frame]))
+
     for i in range(len(centers1)):
         center = centers1[i]
         center = np.expand_dims(center,axis=0)
         temp = np.append(centers2,center,axis=0)
-        nearest_neigbor = NearestNeighbors(n_neighbors=knn_param_temp, algorithm='ball_tree').fit(temp)
+        nearest_neigbor = NearestNeighbors(n_neighbors=knn_param_temp_1_to_2, algorithm='ball_tree').fit(temp)
         temporal_indices = nearest_neigbor.kneighbors(temp, return_distance=False)
         #Remove the self referencing edge connection
         if (self_referencing_edges==False):

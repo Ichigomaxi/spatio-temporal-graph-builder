@@ -31,6 +31,7 @@ class NuscenesMotGraph(object):
     def __init__(self,nuscenes_handle:NuScenes, start_frame:str , max_frame_dist:int = 3,
                     filterBoxes_categoryQuery:Union[str,List[str]] = None,
                     construction_possibility_checked = True,
+                    adapt_knn_param = False,
                     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
 
         self.max_frame_dist = max_frame_dist
@@ -38,6 +39,7 @@ class NuscenesMotGraph(object):
         self.start_frame = start_frame
         self.is_possible2construct:bool = self._is_possible2construct()
         self.filterBoxes_categoryQuery = filterBoxes_categoryQuery # Is often 'vehicle.car'
+        self.adapt_knn_param = adapt_knn_param
         self.device = device
 
         # Data-child object for pytorch
@@ -96,6 +98,8 @@ class NuscenesMotGraph(object):
             centers_dict[box_timeframe] = (car_boxes,centers)
 
         graph_dataframe["centers_dict"] = centers_dict
+        print("centers_dict",centers_dict)
+        print("centers_dict",len(centers_dict))
 
         # Combine all lists within boxes Dict into one list
         # Add in chronological order
@@ -118,6 +122,8 @@ class NuscenesMotGraph(object):
             _ ,centers_list_i = graph_dataframe["centers_dict"][centers_list_i_key]
             centers_list_i = centers_list_i.copy()
             t_centers_list_i = torch.from_numpy(centers_list_i).to(self.device)
+            print("t_centers_list_i",t_centers_list_i)
+            print("t_centers_list_i.shape",t_centers_list_i.shape)
             t_centers_list_i += torch.tensor([0,0,NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES * centers_list_i_key]).to(self.device)
             t_centers_list = torch.cat([t_centers_list, t_centers_list_i], dim = 0 ).to(self.device)
 
@@ -154,11 +160,13 @@ class NuscenesMotGraph(object):
         t_spatial_edge_ixs = get_and_compute_spatial_edge_indices(
                     self.graph_dataframe,
                     NuscenesMotGraph.KNN_PARAM_SPATIAL,
+                    adapt_knn_param = self.adapt_knn_param,
                     device= self.device)
         # Compute Temporal Edges
         t_temporal_edge_ixs = get_and_compute_temporal_edge_indices(
                     self.graph_dataframe,
                     NuscenesMotGraph.KNN_PARAM_TEMPORAL,
+                    adapt_knn_param = self.adapt_knn_param,
                     device= self.device)
 
         #TODO Join temporal and spatial edges but also generate a mask to filter them
