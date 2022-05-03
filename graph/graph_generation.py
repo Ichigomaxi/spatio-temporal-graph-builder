@@ -238,8 +238,8 @@ def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
             knn_param_temp_0 = len(centers0)
     
     #Compute K nearest neighbors
-    print("knn_param_temp_0: ",knn_param_temp_0)
-    print("length num obj target: ",len(centers0))
+    # print("knn_param_temp_0: ",knn_param_temp_0)
+    # print("length num obj target: ",len(centers0))
     nbrs_0 = NearestNeighbors(n_neighbors=knn_param_temp_0, algorithm='ball_tree').fit(centers0)
     spatial_indices_0 = nbrs_0.kneighbors(centers0, return_distance=False)
     #Remove the self referencing edge connection
@@ -259,8 +259,8 @@ def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
             knn_param_temp_1 = len(centers1)
         
     #Compute K nearest neighbors
-    print("knn_param_temp_1: ",knn_param_temp_1)
-    print("length num obj target: ",len(centers1))
+    # print("knn_param_temp_1: ",knn_param_temp_1)
+    # print("length num obj target: ",len(centers1))
     nbrs_1 = NearestNeighbors(n_neighbors=knn_param_temp_1, algorithm='ball_tree').fit(centers1)
     spatial_indices_1 = nbrs_1.kneighbors(centers1, return_distance=False)
     #Remove the self referencing edge connection
@@ -282,8 +282,8 @@ def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
         
     
     #Compute K nearest neighbors
-    print("knn_param_temp_2: ",knn_param_temp_2)
-    print("length num obj target: ",len(centers2))
+    # print("knn_param_temp_2: ",knn_param_temp_2)
+    # print("length num obj target: ",len(centers2))
 
     nbrs_2 = NearestNeighbors(n_neighbors=knn_param_temp_2, algorithm='ball_tree').fit(centers2)
     spatial_indices_2 = nbrs_2.kneighbors(centers2, return_distance=False)
@@ -343,8 +343,8 @@ def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
     if invalid_frames is not None:
         if (invalid_frames[target_frame]):
             knn_param_temp_0_to_1 = len(graph_dataframe["centers_dict"][target_frame])
-            print("knn_param_temp_1_to_2: ",knn_param_temp_0_to_1)
-            print("length num obj target: ",len(graph_dataframe["centers_dict"][target_frame]))
+            # print("knn_param_temp_1_to_2: ",knn_param_temp_0_to_1)
+            # print("length num obj target: ",len(graph_dataframe["centers_dict"][target_frame]))
 
     for i in range(len(centers0)):
         center = centers0[i]
@@ -375,8 +375,8 @@ def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
     if invalid_frames is not None:
         if (invalid_frames[target_frame]):
             knn_param_temp_0_to_2 = len(graph_dataframe["centers_dict"][target_frame])
-            print("knn_param_temp_0_to_2: ",knn_param_temp_0_to_2)
-            print("length num obj target: ",len(graph_dataframe["centers_dict"][target_frame]))
+            # print("knn_param_temp_0_to_2: ",knn_param_temp_0_to_2)
+            # print("length num obj target: ",len(graph_dataframe["centers_dict"][target_frame]))
 
 
     for i in range(len(centers0)):
@@ -407,8 +407,8 @@ def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
     if invalid_frames is not None:
         if (invalid_frames[target_frame]):
             knn_param_temp_1_to_2 = len(graph_dataframe["centers_dict"][target_frame])
-            print("knn_param_temp_1_to_2: ",knn_param_temp_1_to_2)
-            print("length num obj target: ",len(graph_dataframe["centers_dict"][target_frame]))
+            # print("knn_param_temp_1_to_2: ",knn_param_temp_1_to_2)
+            # print("length num obj target: ",len(graph_dataframe["centers_dict"][target_frame]))
 
     for i in range(len(centers1)):
         center = centers1[i]
@@ -453,9 +453,10 @@ def compute_edge_feats_dict(edge_ixs_dict:Dict[str,torch.Tensor],
         with vals of that attribute for each edge.
 
     """
-    
-    if mode not in EDGE_FEATURE_COMPUTATION_MODE:
-        raise ValueError('Incorrect mode string. Please use any of these keywords: {}'.format(EDGE_FEATURE_COMPUTATION_MODE))
+    assert mode in EDGE_FEATURE_COMPUTATION_MODE,\
+        'Incorrect mode string. Please use any of these keywords: {}'.format(EDGE_FEATURE_COMPUTATION_MODE)
+    # if mode not in EDGE_FEATURE_COMPUTATION_MODE:
+    #     raise ValueError('Incorrect mode string. Please use any of these keywords: {}'.format(EDGE_FEATURE_COMPUTATION_MODE))
 
     t_edge_ixs = edge_ixs_dict["edges"]
     t_temporal_edges_mask = edge_ixs_dict["temporal_edges_mask"]

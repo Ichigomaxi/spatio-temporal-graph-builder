@@ -39,7 +39,7 @@ dataset_params:
   dataroot : '/mount/HDD2/Datasets/nuscenes2'
   is_windows_path : True
   # Edge_Label Type
-  label_type: "binary"
+  label_type: "multiclass"
 
   # Filter Parameter
   # Contains a list of nuscenes class labels.

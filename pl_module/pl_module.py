@@ -6,6 +6,7 @@ This is serves as inspiration for our own code
 import os
 import os.path as osp
 from typing import Dict
+from cv2 import log
 
 import pandas as pd
 
@@ -42,6 +43,8 @@ class MOTNeuralSolver(pl.LightningModule):
         self.save_hyperparameters(hparams)
         
         self.model = self.load_model()
+        self.skipped_batches = 0
+        self.skipped_batches_val = 0
     
     def forward(self, x):
         self.model(x)
@@ -98,6 +101,16 @@ class MOTNeuralSolver(pl.LightningModule):
     def _compute_loss(self, outputs, batch):
 
         if self.hparams['dataset_params']['label_type'] == "binary":
+            # Filter out graphs that contains dummies
+            # Therefore return a zero to loss (that contains requires_grad)
+            dummy_coeff = None
+            if any(batch.contains_dummies):
+                # print("batch.contains_dummies:\n" ,batch.contains_dummies)
+                dummy_coeff = 0
+                return torch.zeros(1,dtype=torch.float32, requires_grad=True)
+            else:
+                dummy_coeff = 1
+
             # Define Balancing weight
             positive_vals = batch.edge_labels.sum()
 
@@ -105,25 +118,40 @@ class MOTNeuralSolver(pl.LightningModule):
                 pos_weight = (batch.edge_labels.shape[0] - positive_vals) / positive_vals
 
             else: # If there are no positives labels, avoid dividing by zero
-                pos_weight = 0
+                pos_weight = torch.zeros(1)
 
             # Compute Weighted BCE:
             loss = 0
             num_steps = len(outputs['classified_edges'])
             for step in range(num_steps):
-                loss += F.binary_cross_entropy_with_logits(outputs['classified_edges'][step].view(-1),
+                loss_i = dummy_coeff * F.binary_cross_entropy_with_logits(outputs['classified_edges'][step].view(-1),
                                                                 batch.edge_labels.view(-1),
                                                                 pos_weight= pos_weight)
+                loss += loss_i
             return loss
+        elif self.hparams['dataset_params']['label_type'] == "binary":
+            return torch.zeros(1,dtype=torch.float32, requires_grad=True)
+            
         else: 
-            return 0
+            return torch.zeros(1,dtype=torch.float32, requires_grad=True)
 
     def _train_val_step(self, batch, batch_idx, train_val):
         device = (next(self.model.parameters())).device
         batch.to(device)
 
+        # compute output logits given input batch
         outputs = self.model(batch)
+        # compute Loss
         loss = self._compute_loss(outputs, batch)
+
+        # Skip batches by returning None and increase counter
+        if any(batch.contains_dummies):
+            if train_val == 'train':
+                self.skipped_batches += 1
+            else:
+                self.skipped_batches_val += 1
+            return None
+
         logs = {**{'loss': loss}}
         log = {key + f'/{train_val}': val for key, val in logs.items()}
 
@@ -134,17 +162,26 @@ class MOTNeuralSolver(pl.LightningModule):
             return log
 
     def training_step(self, batch, batch_idx):
+
         log_dict = self._train_val_step(batch, batch_idx, 'train')
-        self.log_dict(log_dict)
-        # self.log("train_val",log_dict['log'])
+        self.log('skipped_batches_train',self.skipped_batches)
+        if log_dict is not None:
+            self.log_dict(log_dict)
 
         return log_dict
 
     def validation_step(self, batch, batch_idx):
-        # self.log("val_loss", loss)
         log_dict = self._train_val_step(batch, batch_idx, 'val')
-        self.log_dict(log_dict)
+        self.log('skipped_batches_val',self.skipped_batches_val)
+        if log_dict is not None:
+            self.log_dict(log_dict)
+        
         return log_dict
+
+    def training_epoch_end(self, all_training_step_outputs) -> None:
+        # Reset count
+        self.skipped_batches = 0
+        self.skipped_batches_val = 0
 
     def validation_epoch_end(self, outputs):
         metrics = pd.DataFrame(outputs).mean(axis=0).to_dict()

@@ -3,21 +3,24 @@ from turtle import shape
 from typing import Dict, List, Union
 
 import numpy as np
-from sklearn.utils import deprecated
 import torch
 import torch.nn.functional as F
-from graph.graph_generation import (
-                                    compute_edge_feats_dict,
-                                    get_and_compute_temporal_edge_indices, get_and_compute_spatial_edge_indices)
+from graph.graph_generation import (compute_edge_feats_dict,
+                                    get_and_compute_spatial_edge_indices,
+                                    get_and_compute_temporal_edge_indices)
 from groundtruth_generation.nuscenes_create_gt import (
     generate_edge_label_one_hot, generate_flow_labels)
-from nuscenes import NuScenes
+from matplotlib.pyplot import box
+from sklearn.utils import deprecated
 from torch_geometric.transforms.to_undirected import ToUndirected
-
 from utility import filter_boxes, get_box_centers, is_same_instance
 from utils.nuscenes_helper_functions import is_valid_box, is_valid_box_torch
-
+# For dummy objects
 from datasets.mot_graph import Graph
+from pyquaternion import Quaternion
+
+from nuscenes import NuScenes
+from nuscenes.utils.data_classes import Box
 
 # from utils.graph import get_knn_mask
 
@@ -27,6 +30,8 @@ class NuscenesMotGraph(object):
     KNN_PARAM_TEMPORAL = 3
     KNN_PARAM_SPATIAL = 3
     NODE_FEATURE_MODES = {"only_centers", "centers_and_time"}
+    EDGE_LABEL_TYPES = {"binary", "multiclass"}
+    DUMMY_TOKEN = "dummy_token"
 
     def __init__(self,nuscenes_handle:NuScenes, start_frame:str , max_frame_dist:int = 3,
                     filterBoxes_categoryQuery:Union[str,List[str]] = None,
@@ -54,6 +59,25 @@ class NuscenesMotGraph(object):
         if self.is_possible2construct:
             self.graph_dataframe = self._construct_graph_dataframe()
 
+    def _construct_dummy_boxes(self, num_needed_boxes: int) -> List[Box]:
+        boxes = []
+        for i in range(num_needed_boxes):
+            center: List[float] = [0, 0, 0]
+            size: List[float] = [-1, -1, -1] #width, length, height.
+            orientation:Quaternion = Quaternion([0,0,0,0])
+            label: int = -1
+            name: str = "dummy"
+            token: str = self.DUMMY_TOKEN
+            box = Box(center,
+                            size,
+                            orientation,
+                            label = label,
+                            name=name,
+                            token=token)
+            # print(box)
+            boxes.append(box)
+        return boxes
+
     def _construct_graph_dataframe(self):
         """
         Determines which frames will be in the graph, and creates a DataFrame with its detection's information.
@@ -79,8 +103,17 @@ class NuscenesMotGraph(object):
             # filter out all object that are not of class self.filterBoxes_categoryQuery
             if( self.filterBoxes_categoryQuery is not None):
                 boxes = filter_boxes(self.nuscenes_handle, boxes= boxes, categoryQuery= self.filterBoxes_categoryQuery)
-                if len(boxes)<= self.KNN_PARAM_SPATIAL or len(boxes)<= self.KNN_PARAM_TEMPORAL:
-                    print("num of filtered objects is smaller than the KNN parameters")
+            # Embed dummy objects if number of objects is smaller then any knn-Parameter
+            # this will also catch cases where no objects are left after filtering 
+            # there must be at least k + 1 elements such that one element can have k neighbors
+            if (len(boxes) < (self.KNN_PARAM_SPATIAL + 1)) \
+                or (len(boxes) < (self.KNN_PARAM_TEMPORAL + 1)):
+                print("num of objects is smaller than the KNN parameters")
+                spatial_difference = self.KNN_PARAM_SPATIAL + 1 - len(boxes)
+                temporal_difference = self.KNN_PARAM_TEMPORAL + 1 - len(boxes)
+                num_needed_boxes = max(spatial_difference, temporal_difference)
+                boxes.extend(self._construct_dummy_boxes(num_needed_boxes))
+                
             boxes_dict[i] = boxes
 
             #Move to next sample
@@ -98,8 +131,8 @@ class NuscenesMotGraph(object):
             centers_dict[box_timeframe] = (car_boxes,centers)
 
         graph_dataframe["centers_dict"] = centers_dict
-        print("centers_dict",centers_dict)
-        print("centers_dict",len(centers_dict))
+        # print("centers_dict",centers_dict)
+        # print("centers_dict",len(centers_dict))
 
         # Combine all lists within boxes Dict into one list
         # Add in chronological order
@@ -122,8 +155,8 @@ class NuscenesMotGraph(object):
             _ ,centers_list_i = graph_dataframe["centers_dict"][centers_list_i_key]
             centers_list_i = centers_list_i.copy()
             t_centers_list_i = torch.from_numpy(centers_list_i).to(self.device)
-            print("t_centers_list_i",t_centers_list_i)
-            print("t_centers_list_i.shape",t_centers_list_i.shape)
+            # print("t_centers_list_i",t_centers_list_i)
+            # print("t_centers_list_i.shape",t_centers_list_i.shape)
             t_centers_list_i += torch.tensor([0,0,NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES * centers_list_i_key]).to(self.device)
             t_centers_list = torch.cat([t_centers_list, t_centers_list_i], dim = 0 ).to(self.device)
 
@@ -242,6 +275,20 @@ class NuscenesMotGraph(object):
         return new_instance_token_list, new_instance_box_list
         # return new_instance_token_list
 
+    def _contains_dummy_objects(self, boxes:List[Box]=None) -> bool:
+        box_list = boxes
+        if box_list is None:
+            box_list = self.graph_dataframe["boxes_list_all"]
+        
+        dummyObjectFlag = False
+        i = 0 
+        while (i < len(box_list)) and (dummyObjectFlag== False):
+            box = box_list[i]
+            if(box.token == self.DUMMY_TOKEN):
+                dummyObjectFlag = True
+            i += 1
+        return dummyObjectFlag
+
     def assign_edge_labels(self, label_type:str):
         '''
         Generates Edge labels for each edge
@@ -249,61 +296,75 @@ class NuscenesMotGraph(object):
         '''
         self.label_type = label_type
         
-        label_types = {"binary", "multiclass"}
-        if label_type not in label_types:
-            raise ValueError('Incorrect label_type string. Please use either "binary" or "multiclass"')
+        
+        assert label_type in self.EDGE_LABEL_TYPES, \
+            'Incorrect label_type string. Please use either {}'.format(self.EDGE_LABEL_TYPES)
+        # if label_type not in label_types:
+        #     raise ValueError('Incorrect label_type string. Please use either "binary" or "multiclass"')
 
         box_list = self.graph_dataframe["boxes_list_all"]
         centers = self.graph_dataframe['centers_list_all']
         
-        new_instance_token_list = None
-        if label_type == "multiclass":
-            new_instance_token_list, _ = self._identify_new_instances_within_graph()
-
         flow_labels = []
 
-        #TODO Change the way how to iterate through edges
-        t_edges = self.graph_obj.edge_index.T
-
-        for edge in t_edges:
-            node_a_center = centers[edge[0]]
-            node_b_center = centers[edge[1]]
-
-            node_a_box = box_list[edge[0]]
-            node_b_box = box_list[edge[1]]
-
-            # Check that car_box and car_centers match
-            if not (is_valid_box_torch(node_a_box,node_a_center,
-                    spatial_shift_timeframes= NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES,
-                    device= self.device)\
-                    and 
-                    is_valid_box_torch(node_b_box,node_b_center,
-                    spatial_shift_timeframes= NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES,
-                    device = self.device)
-                    ):
-                raise ValueError('A box does not correspond to a selected center')
-
-            str_node_a_sample_annotation = node_a_box.token
-            str_node_b_sample_annotation = node_b_box.token
-
+        # Check if invalid Graph containing dummy objects
+        dummyObjectFlag = self._contains_dummy_objects()
+        
+        if dummyObjectFlag:
+            t_edges = self.graph_obj.edge_index.T
+            num_edges = t_edges.shape[0]
             if label_type == "binary":
-                edge_label = self._assign_edge_labels_binary(
-                                    str_node_a_sample_annotation,
-                                    str_node_b_sample_annotation)
-
+                flow_labels = torch.zeros(num_edges, dtype=torch.float32)
             elif label_type == "multiclass":
-                edge_label = self._assign_edge_labels_one_hot(
-                                str_node_a_sample_annotation,
-                                str_node_b_sample_annotation,
-                                new_instances_token_list = new_instance_token_list)
+                flow_labels = torch.zeros(num_edges,3, dtype=torch.float32)
+                flow_labels[:,2] + 1 
+        else:
+            new_instance_token_list = None
+            if label_type == "multiclass":
+                new_instance_token_list, _ = self._identify_new_instances_within_graph()
 
-            flow_labels.append(edge_label)
+            #TODO Change the way how to iterate through edges
+            t_edges = self.graph_obj.edge_index.T
 
-        # Concatenate list of edge_labels
-        if label_type == "binary":
-            flow_labels = torch.tensor(flow_labels,dtype=torch.float32)
-        elif label_type == "multiclass":
-            flow_labels = torch.stack(flow_labels, dim = 0)
+            for edge in t_edges:
+                node_a_center = centers[edge[0]]
+                node_b_center = centers[edge[1]]
+
+                node_a_box = box_list[edge[0]]
+                node_b_box = box_list[edge[1]]
+
+                # Check that car_box and car_centers match
+                if not (is_valid_box_torch(node_a_box,node_a_center,
+                        spatial_shift_timeframes= NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES,
+                        device= self.device)\
+                        and 
+                        is_valid_box_torch(node_b_box,node_b_center,
+                        spatial_shift_timeframes= NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES,
+                        device = self.device)
+                        ):
+                    raise ValueError('A box does not correspond to a selected center')
+
+                str_node_a_sample_annotation = node_a_box.token
+                str_node_b_sample_annotation = node_b_box.token
+                
+                if label_type == "binary":
+                    edge_label = self._assign_edge_labels_binary(
+                                        str_node_a_sample_annotation,
+                                        str_node_b_sample_annotation)
+                
+                elif label_type == "multiclass":
+                    edge_label = self._assign_edge_labels_one_hot(
+                                    str_node_a_sample_annotation,
+                                    str_node_b_sample_annotation,
+                                    new_instances_token_list = new_instance_token_list)
+
+                flow_labels.append(edge_label)
+
+            # Concatenate list of edge_labels
+            if label_type == "binary":
+                flow_labels = torch.tensor(flow_labels,dtype=torch.float32)
+            elif label_type == "multiclass":
+                flow_labels = torch.stack(flow_labels, dim = 0)
 
         # Transfere to GPU if available
         # flow_labels = torch.FloatTensor(flow_labels)
@@ -411,13 +472,19 @@ class NuscenesMotGraph(object):
         t_temporal_edge_mask = torch.cat( [edge_ixs_dict["temporal_edges_mask"],
                                     edge_ixs_dict["temporal_edges_mask"]],
                                     dim= 0).to(self.device)
-        
+
+        # Add information to graph if it contains dummy Objects
+        bool_contains_dummies = self._contains_dummy_objects()            
+
         # Build Data-graph object for pytorch model
         self.graph_obj = Graph(x = t_node_features,
                                edge_attr = t_edge_feats,
                                edge_index = t_edge_ixs,
-                               temporal_edges_mask = t_temporal_edge_mask)
+                               temporal_edges_mask = t_temporal_edge_mask,
+                               contains_dummies = bool_contains_dummies          
+                               )
         # self.graph_obj.temporal_edges_mask = t_temporal_edge_mask
+        # print('self.graph_obj.contains_dummies:\n',self.graph_obj.contains_dummies)
 
         # Ensure that graph is undirected.
         if self.graph_obj.is_directed():
