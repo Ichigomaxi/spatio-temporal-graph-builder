@@ -14,7 +14,7 @@ gpu_settings:
   torch_device: 'cuda:1'
 
 train_params:
-  batch_size: 8
+  batch_size: 4
   num_epochs: 400
   optimizer:
     type: Adam
@@ -28,10 +28,11 @@ train_params:
       step_size: 7
       gamma: 0.5
 
-  num_workers: 4 # Used for dataloaders
-  save_every_epoch: False # Determines if every a checkpoint will be saved for every epoch
+  num_workers: 0 # Used for dataloaders
+  save_every_epoch: True # Determines if every a checkpoint will be saved for every epoch
   save_epoch_start: 1 # If the arg above is set to True, determines the first epoch after which we start saving ckpts
   tensorboard: True
+  include_custom_checkpointing : True
 
 dataset_params:
   # Dataset Processing params:
@@ -55,7 +56,7 @@ dataset_params:
   edge_feature_mode : "edge_type" # determines the included edge features 
 
   # Choose how Graph construction should be handled
-  adapt_knn_param: True # if number of objects is below the KNN-Param then K
+  adapt_knn_param: False # if number of objects is below the KNN-Param then K
 
 data_splits: # See nuscenes.datasplit()
   train: ['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']

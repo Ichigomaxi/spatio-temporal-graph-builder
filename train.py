@@ -7,7 +7,8 @@ import sacred
 from sacred import Experiment
 
 # from mot_neural_solver.utils.evaluation import MOTMetricsLogger
-from utils.misc import make_deterministic, get_run_str_and_save_dir, ModelCheckpoint
+from utils.misc import make_deterministic, get_run_str_and_save_dir
+from utils.misc import ModelCheckpoint as ModelCheckpointCustom
 
 from utils.path_cfg import OUTPUT_PATH
 import os.path as osp
@@ -16,13 +17,18 @@ from pl_module.pl_module import MOTNeuralSolver
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
-#from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 
 ###############
 #For DATALOADER
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 from torch_geometric.loader import DataLoader
 ##################
+
+# Pytorch Lightning Callback For Trainig 
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+
+
 
 from sacred import SETTINGS
 SETTINGS.CONFIG.READ_ONLY_CONFIG=False
@@ -63,24 +69,30 @@ def main(_config, _run):
     else:
         logger = None
 
-    ckpt_callback = ModelCheckpoint(save_epoch_start = _config['train_params']['save_epoch_start'],
-                                    save_every_epoch = _config['train_params']['save_every_epoch'])
     
     #########################################
     # Load Data 
     # nusc = NuScenes(version='v1.0-mini', dataroot=r"C:\Users\maxil\Documents\projects\master_thesis\mini_nuscenes", verbose=True)
     # nusc = NuScenes(version='v1.0-trainval', dataroot='/media/HDD2/Datasets/mini_nusc', verbose=True)
     
-    train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode =_config["train_dataset_mode"], device=_config['gpu_settings']['torch_device'])
+    train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'],
+                                            mode =_config["train_dataset_mode"], 
+                                            device=_config['gpu_settings']['torch_device'])
 
-    train_loader = DataLoader(train_dataset,batch_size = _config['train_params']['batch_size'])
+    train_loader = DataLoader(train_dataset,
+                            batch_size = _config['train_params']['batch_size'],
+                            shuffle= True,
+                            num_workers=_config['train_params']['num_workers'])
 
     eval_dataset = NuscenesMOTGraphDataset(_config['dataset_params'],
                                     mode =_config["eval_dataset_mode"],
                                     nuscenes_handle = train_dataset.get_nuscenes_handle(),
                                     device =_config['gpu_settings']['torch_device'])
 
-    eval_loader = DataLoader(eval_dataset,batch_size = _config['train_params']['batch_size'])
+    eval_loader = DataLoader(eval_dataset,
+                                batch_size = _config['train_params']['batch_size'],
+                                shuffle= False,
+                                num_workers=_config['train_params']['num_workers'])
     ###################################
 
     # Validation percentage check is deprecated in favour of limit_val_batches 
@@ -91,14 +103,45 @@ def main(_config, _run):
 
     # check_val_every_n_epoch=_config['eval_params']['check_val_every_n_epoch'] is deprecated
     # default_save_path=osp.join(OUTPUT_PATH, 'experiments', run_str) is deprecated
+    
+    #Set up Callbacks for training
+    callbacks = []
+    # save model weights 
+    # Custom ModelCheckpoint Callback from Neural Solver-Paper
+    if(_config["train_params"]["include_custom_checkpointing"]):
+        ckpt_callback_custom = ModelCheckpointCustom(save_epoch_start = _config['train_params']['save_epoch_start'],
+                                    save_every_epoch = _config['train_params']['save_every_epoch'])
+        callbacks.append(ckpt_callback_custom)
+    # Save up to k best models 
+    checkpoint_callback = ModelCheckpoint(dirpath=osp.join(_config['output_path'], 'experiments', run_str,"model_checkpoints"),
+                                        save_top_k=_config['train_params']['num_save_top_k'],
+                                        save_last = True,
+                                        monitor="loss/val",
+                                        mode = "min",
+                                        every_n_epochs = 1 if _config['train_params']['save_every_epoch'] else 0,
+                                        verbose = True)
+
+    callbacks.append(checkpoint_callback)
+    # Enable Early stopping
+    if(_config['train_params']['include_early_stopping']):
+        early_stop_callback = EarlyStopping(monitor="loss/val", min_delta=0.00, patience=5, verbose=False)
+        callbacks.append(early_stop_callback)
+
+    # Learning rate monitor to log lr
+    lr_monitor_callback = LearningRateMonitor(logging_interval='step')
+    callbacks.append(lr_monitor_callback)
+
     accelerator = _config['gpu_settings']['device_type']
     devices = _config['gpu_settings']['device_id']
 
     trainer = Trainer(gpus=devices,
-                    callbacks=[ckpt_callback],
+                    callbacks=callbacks,
                     max_epochs=_config['train_params']['num_epochs'],
                     logger =logger,
+                    default_root_dir= osp.join(_config['output_path'], 'experiments', run_str)
                     )
 
     
     trainer.fit(model,train_loader,eval_loader)
+
+    # `skipped_batches_train`, `loss`, `log`, `skipped_batches_val`, `loss/val`, `val_loss_epochend`, `log_epochend`

@@ -3,7 +3,7 @@ add_date: True
 cross_val_split:  
 
 output_path : '/mount/HDD2/students/maximilian/spatio-temporal-gnn'
-ckpt_path: 'experiments/mot20_mot_mpnet_epoch_021.ckpt' # Only used during evaluation
+ckpt_path: 'experiments/path_to_checkpoint.ckpt' # Only used during evaluation
 train_dataset_mode: "train"
 eval_dataset_mode: "val"
 
@@ -14,7 +14,7 @@ gpu_settings:
   torch_device: 'cuda:1'
 
 train_params:
-  batch_size: 4
+  batch_size: 8
   num_epochs: 100
   optimizer:
     type: Adam
@@ -28,16 +28,19 @@ train_params:
       step_size: 7
       gamma: 0.5
 
-  num_workers: 1 # Used for dataloaders
-  save_every_epoch: False # Determines if every a checkpoint will be saved for every epoch
+  num_workers: 8 # Used for dataloaders
+  save_every_epoch: True # Determines if every a checkpoint will be saved for every epoch
   save_epoch_start: 1 # If the arg above is set to True, determines the first epoch after which we start saving ckpts
   tensorboard: True
+  num_save_top_k: 2
+  include_custom_checkpointing : True
+  include_early_stopping : True
 
 dataset_params:
   # Dataset Processing params:
   dataset_version: 'v1.0-trainval'
   dataroot : '/mount/HDD2/Datasets/nuscenes2'
-  is_windows_path : True
+  is_windows_path : False
   # Edge_Label Type
   label_type: "binary"
 

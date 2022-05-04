@@ -60,6 +60,10 @@ def get_run_str_and_save_dir(run_id, cross_val_split, add_date):
 
 class ModelCheckpoint(Callback):
     """
+    Taken from https://github.com/dvl-tum/mot_neural_solver
+    Check out the corresponding Paper https://arxiv.org/abs/1912.07515
+    This is serves as inspiration for our own code
+
     Callback to allow saving models on every epoch, even if there's no validation loop
     """
     def __init__(self, save_epoch_start = 0, save_every_epoch=False):
@@ -69,7 +73,7 @@ class ModelCheckpoint(Callback):
 
     def on_epoch_end(self, trainer, pl_module):
         if trainer.current_epoch + 1 >= self.save_epoch_start and self.save_every_epoch:
-            filepath = osp.join(trainer.default_save_path,'checkpoints', f"epoch_{trainer.current_epoch+1:03}.ckpt")
+            filepath = osp.join(trainer.default_root_dir,'checkpoints', f"epoch_{trainer.current_epoch+1:03}.ckpt")
             os.makedirs(osp.dirname(filepath), exist_ok = True)
             trainer.save_checkpoint(filepath)
             print(f"Saving model at {filepath}")
