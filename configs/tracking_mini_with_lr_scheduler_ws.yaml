@@ -1,18 +1,19 @@
 # Config for naming logging directory
-run_id: 'train_w_default_config'
+run_id: 'train_mini_continuation_default_config'
 add_date: True
 cross_val_split: 
+
 # Config for logging directory path
-output_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn' 
+output_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn'
 
 # Config to load previous model
-load_checkpoint : True
+load_checkpoint : False
 # ckpt_path: 'experiments/path_/to/_checkpoint.ckpt'
-ckpt_path: 'experiments/05-03_20:07_train_w_default_config/checkpoints/epoch=8-step=60146.ckpt'
+# ckpt_path: 'experiments/05-04_18:29_train_mini_continuation_default_config/model_checkpoints/last.ckpt' # Only used during evaluation 
 
 # Config for modes from the nuscenes split
-train_dataset_mode: "train"
-eval_dataset_mode: "val"
+train_dataset_mode: "mini_train"
+eval_dataset_mode: "mini_val"
 
 gpu_settings:
   device_type: "gpu"
@@ -21,40 +22,37 @@ gpu_settings:
   torch_device: 'cuda:1'
 
 train_params:
-  batch_size: 8
-  num_epochs: 200
+  batch_size: 4
+  num_epochs: 400
   optimizer:
     type: Adam
     args:
-      lr: 0.0001
-      weight_decay: 0.001
+      lr: 0.001
+      weight_decay: 0.0001
 
   lr_scheduler:
-    type:
+    type: StepLR
     args:
-      step_size: 7
-      gamma: 0.5
+      step_size: 100
+      gamma: 0.1
 
   num_workers: 0 # Used for dataloaders
   save_every_epoch: True # Determines if every a checkpoint will be saved for every epoch
   save_epoch_start: 1 # If the arg above is set to True, determines the first epoch after which we start saving ckpts
   tensorboard: True
-  num_save_top_k: 2
   include_custom_checkpointing : True
-  include_early_stopping : True
 
 dataset_params:
   # Dataset Processing params:
   dataset_version: 'v1.0-trainval'
-  dataroot : '/mount/HDD2/Datasets/nuscenes2'
-  is_windows_path : False
+  dataroot : '/media/HDD2/Datasets/mini_nusc'
+  is_windows_path : True
   # Edge_Label Type
   label_type: "binary"
 
   # Filter Parameter
   # Contains a list of nuscenes class labels.
   # Only detections from these clases will be loaded for the graph
-  # filterBoxes_categoryQuery: ['vehicle.car'] 
   filterBoxes_categoryQuery: ['vehicle.car'] 
 
   # Data Augmentation Params
@@ -79,8 +77,8 @@ eval_params:
 
 graph_model_params:
   node_agg_fn: 'sum'
-  num_enc_steps: 5  # Number of message passing steps
-  num_class_steps: 3  # Number of message passing steps during feature vectors are classified (after Message Passing)
+  num_enc_steps: 12  # Number of message passing steps
+  num_class_steps: 8  # Number of message passing steps during feature vectors are classified (after Message Passing)
   reattach_initial_nodes: False  # Determines whether initially encoded node feats are used during node updates
   reattach_initial_edges: True  # Determines whether initially encoded edge feats are used during node updates
 

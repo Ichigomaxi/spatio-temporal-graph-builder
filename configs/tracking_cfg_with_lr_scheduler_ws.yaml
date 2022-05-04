@@ -1,14 +1,14 @@
 # Config for naming logging directory
-run_id: 'train_w_default_config'
+run_id: 'train_w_LR_scheduler'
 add_date: True
 cross_val_split: 
 # Config for logging directory path
 output_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn' 
 
 # Config to load previous model
-load_checkpoint : True
+load_checkpoint : False
 # ckpt_path: 'experiments/path_/to/_checkpoint.ckpt'
-ckpt_path: 'experiments/05-03_20:07_train_w_default_config/checkpoints/epoch=8-step=60146.ckpt'
+# ckpt_path: 'experiments/05-03_20:07_train_w_default_config/checkpoints/epoch=8-step=60146.ckpt'
 
 # Config for modes from the nuscenes split
 train_dataset_mode: "train"
@@ -26,14 +26,14 @@ train_params:
   optimizer:
     type: Adam
     args:
-      lr: 0.0001
+      lr: 0.001
       weight_decay: 0.001
 
   lr_scheduler:
-    type:
+    type: StepLR
     args:
-      step_size: 7
-      gamma: 0.5
+      step_size: 100
+      gamma: 0.01
 
   num_workers: 0 # Used for dataloaders
   save_every_epoch: True # Determines if every a checkpoint will be saved for every epoch

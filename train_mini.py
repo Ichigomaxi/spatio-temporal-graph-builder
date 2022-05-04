@@ -55,8 +55,10 @@ def main(_config, _run):
     hparams_dict = dict(_config)
     # pytorch lightning model
     model = MOTNeuralSolver(hparams = hparams_dict)
-    
-    model = MOTNeuralSolver.load_from_checkpoint(checkpoint_path=_config['ckpt_path'] if osp.exists(_config['ckpt_path'])  else osp.join(OUTPUT_PATH, _config['ckpt_path']))
+    if _config['load_checkpoint']:
+        model = MOTNeuralSolver.load_from_checkpoint(checkpoint_path=_config['ckpt_path'] \
+                                                    if osp.exists(_config['ckpt_path'])  \
+                                                    else osp.join(_config['output_path'], _config['ckpt_path']))
 
     run_str, save_dir = get_run_str_and_save_dir(_config['run_id'], _config['cross_val_split'], _config['add_date'])
 

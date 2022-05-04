@@ -1,9 +1,17 @@
+# Config for naming logging directory
 run_id: 'train_mini_continuation_default_config'
 add_date: True
 cross_val_split: 
 
+# Config for logging directory path
 output_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn'
-ckpt_path: 'experiments/05-01_18:46_train_w_default_config/checkpoints/epoch=399-step=15599.ckpt' # Only used during evaluation 
+
+# Config to load previous model
+load_checkpoint : True
+# ckpt_path: 'experiments/path_/to/_checkpoint.ckpt'
+ckpt_path: 'experiments/05-04_18:29_train_mini_continuation_default_config/model_checkpoints/last.ckpt' # Only used during evaluation 
+
+# Config for modes from the nuscenes split
 train_dataset_mode: "mini_train"
 eval_dataset_mode: "mini_val"
 
