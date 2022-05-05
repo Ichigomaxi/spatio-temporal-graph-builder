@@ -124,12 +124,16 @@ class MOTNeuralSolver(pl.LightningModule):
             loss = 0
             num_steps = len(outputs['classified_edges'])
             for step in range(num_steps):
-                loss_i = dummy_coeff * F.binary_cross_entropy_with_logits(outputs['classified_edges'][step].view(-1),
-                                                                batch.edge_labels.view(-1),
+                
+                predicted_edges_step_i = outputs['classified_edges'][step].view(-1)
+                edge_labels = batch.edge_labels.view(-1)
+                # Filter for Faulty predictions        
+                loss_i = dummy_coeff * F.binary_cross_entropy_with_logits(predicted_edges_step_i,
+                                                                edge_labels,
                                                                 pos_weight= pos_weight)
                 loss += loss_i
             return loss
-        elif self.hparams['dataset_params']['label_type'] == "binary":
+        elif self.hparams['dataset_params']['label_type'] == "multiclass":
             return torch.zeros(1,dtype=torch.float32, requires_grad=True)
             
         else: 

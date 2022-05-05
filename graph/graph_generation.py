@@ -197,7 +197,32 @@ def is_invalid_frame(graph_dataframe:Dict,knn_param:int):
             invalid_frames[key] = False
 
     return invalid_frames
+
+def get_and_compute_spatial_edge_indices_new( graph_dataframe:Dict,\
+        knn_param:int, 
+        self_referencing_edges:bool = False,
+        adapt_knn_param = False,
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        )-> torch.Tensor:
+    '''
+    Returns indices of edges in reference to the stacked center indices.
+    Returns:
+    t_spatial_pointpairs:torch interger tensor (num_spatial_edges,2)
+    '''
+    # increase knn param because one column will be removed since it 
+    # is the self referencing edge connection
+    knn_param_temp = None
+    if(self_referencing_edges==False):
+        knn_param_temp = knn_param + 1
+    else:
+        knn_param_temp = knn_param
+
+    # check if number of object centers is less than the number of neighbors k needed for  KNN
+    invalid_frames = None
+    if adapt_knn_param:
+        invalid_frames = is_invalid_frame(graph_dataframe, knn_param)
     
+
 def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
         knn_param:int, 
         self_referencing_edges:bool = False,

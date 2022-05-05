@@ -1,8 +1,11 @@
 
-from datasets.nuscenes_mot_graph import NuscenesMotGraph
+from curses import noecho
+from datasets.nuscenes_mot_graph import NuscenesMotGraph, NuscenesMotGraphAnalyzer
 from datasets.NuscenesDataset import NuscenesDataset
 from nuscenes.nuscenes import NuScenes
 import torch
+import time
+import pickle
 
 class NuscenesMOTGraphDataset(object):
     """
@@ -40,7 +43,32 @@ class NuscenesMOTGraphDataset(object):
 
         if self.seqs_to_retrieve:
             # Index the dataset (i.e. assign a pair (scene, starting frame) to each integer from 0 to len(dataset) -1)
-            self.seq_frame_ixs = self._index_dataset()
+            if dataset_params['load_valid_sequence_sample_list'] is not None:
+                if dataset_params['load_valid_sequence_sample_list'] == True:
+                    print("##########################################################")
+                    print("Starting to load sequence sample list from pickle file")
+                    loading_list_start_time = time.time()
+                    self.seq_frame_ixs = []
+                    filepath_train = dataset_params['sequence_sample_list_train_path']
+                    filepath_val = dataset_params['sequence_sample_list_val_path']
+                    filepath = None 
+                    if ("train" in self.mode):
+                        filepath = filepath_train
+                    elif "val" in self.mode:
+                        filepath = filepath_val
+                    else:
+                        filepath = filepath_train
+                    with open(filepath, 'rb') as f:
+                        self.seq_frame_ixs = pickle.load(f)
+                    print("Finished Loading ")
+                    loading_list_end_time = time.time()
+                    time_difference = loading_list_end_time - loading_list_start_time
+                    print("Elapsed Loading time: {}".format(time_difference))
+                    print("##########################################################")
+                else: 
+                    self.seq_frame_ixs = self._index_dataset()
+            else:
+                self.seq_frame_ixs = self._index_dataset()
 
     def _get_seqs_to_retrieve_from_splits(self, splits):
         """
@@ -67,6 +95,8 @@ class NuscenesMOTGraphDataset(object):
         Returns:
             tuple of tuples of valid (seq_name, frame_num) pairs from which a graph can be created
         """
+        print('############################################################')
+        print('Starting to Index the dataset\n {}-Datasplit'.format(self.mode))
         split_scene_list = self.seqs_to_retrieve
 
         # Create List of all sample frames within the retrieved scenes/sequences 
@@ -82,6 +112,8 @@ class NuscenesMOTGraphDataset(object):
                     last_sample_token = scene['last_sample_token']
 
         # Filter out all non valid (scene_tokens, sample_tokens) that will not be able to build a valid graph with 3 or more frames
+        print("First Filtering Process:\n Check if there are still enough time frames left")
+        first_filter_start_time = time.time()
         filtered_sample_list = []
         for scene_sample_tuple in sample_list_all:
             # Check sample if enough frames remaining to construct graph
@@ -101,15 +133,39 @@ class NuscenesMOTGraphDataset(object):
             # If less than dataset_params['max_frame_dist'] frames counted then we filter it out
             if not (i < self.dataset_params['max_frame_dist']):
                 filtered_sample_list.append(scene_sample_tuple)
+
+        print("Finished Filtering:\n Now remaining MOT graph samples should contain {} time frames".format(self.dataset_params['max_frame_dist']))
+        first_filter_end_time = time.time()
+        print("Elapsed Time for first filtering",first_filter_end_time - first_filter_start_time, "seconds")
+        print('---------------------------------------------')
+
         #TODO
         # Filter if num_objects less than KNN -param
-        # mot_graph = NuscenesMotGraph(
-        #                             nuscenes_handle = self.nuscenes_handle,
-        #                             start_frame = start_frame,
-        #                             max_frame_dist = self.dataset_params['max_frame_dist'],
-        #                             filterBoxes_categoryQuery= self.dataset_params["filterBoxes_categoryQuery"],
-        #                             adapt_knn_param = self.dataset_params["adapt_knn_param"],
-        #                             device= self.device)
+        print("Filtering Process:\n Check if any Mot Graph are not buildable due to lack of detections")
+        start = time.time()
+        
+        construction_possibility_checked = True # due to previous filtering
+        filtered_sample_list_new = []
+        for scene_sample_tuple in filtered_sample_list:
+            scene_token, init_sample_token = scene_sample_tuple
+            start_frame = init_sample_token
+            mot_graph_analyzer = NuscenesMotGraphAnalyzer(
+                                        nuscenes_handle = self.nuscenes_handle,
+                                        start_frame = start_frame,
+                                        max_frame_dist = self.dataset_params['max_frame_dist'],
+                                        construction_possibility_checked = construction_possibility_checked,
+                                        filterBoxes_categoryQuery= self.dataset_params["filterBoxes_categoryQuery"],
+                                        adapt_knn_param = self.dataset_params["adapt_knn_param"],
+                                        device= self.device)
+       
+            if not mot_graph_analyzer.contains_dummy_objects():
+                filtered_sample_list_new.append(scene_sample_tuple)
+
+        print("Finished Filtering:\n Now remaining mot graph samples should not contain any dummy boxes")
+        end = time.time()
+        print("Elapsed Time for filtering",end - start, "seconds")
+        print('---------------------------------------------')
+        filtered_sample_list = filtered_sample_list_new
 
         return filtered_sample_list
 

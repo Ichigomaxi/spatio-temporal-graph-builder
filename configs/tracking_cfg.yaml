@@ -6,9 +6,9 @@ cross_val_split:
 output_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn' 
 
 # Config to load previous model
-load_checkpoint : True
+load_checkpoint : False
 # ckpt_path: 'experiments/path_/to/_checkpoint.ckpt'
-ckpt_path: 'experiments/05-03_20:07_train_w_default_config/checkpoints/epoch=8-step=60146.ckpt'
+ckpt_path: 'experiments/05-03_20:07_train_w_default_config/checkpoints/epoch=12-step=86878.ckpt'
 
 # Config for modes from the nuscenes split
 train_dataset_mode: "train"
@@ -21,7 +21,7 @@ gpu_settings:
   torch_device: 'cuda:1'
 
 train_params:
-  batch_size: 8
+  batch_size: 4
   num_epochs: 200
   optimizer:
     type: Adam
@@ -44,12 +44,21 @@ train_params:
   include_early_stopping : True
 
 dataset_params:
+  # Preprocessing ParamsL
+  load_valid_sequence_sample_list : True
+  # If the above is true then specify the path to the pickle files
+  # Must be absolutepath until now
+  # if mode not train or val then sequence_sample_list_train_path will be loaded into Dataset object
+  sequence_sample_list_train_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_nuscenes/sequence_sample_list_train.pkl' 
+  sequence_sample_list_val_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_nuscenes/sequence_sample_list_val.pkl'
+
+
   # Dataset Processing params:
   dataset_version: 'v1.0-trainval'
   dataroot : '/mount/HDD2/Datasets/nuscenes2'
   is_windows_path : False
   # Edge_Label Type
-  label_type: "binary"
+  label_type: "binary" # "binary" or "multiclass"
 
   # Filter Parameter
   # Contains a list of nuscenes class labels.

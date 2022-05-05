@@ -5,8 +5,5 @@
 
 # Default run 
 # python train.py
-
 # Multiclass training
-# python train.py with configs/tracking_cfg_multiclass_ws.yaml
-
-python train.py with ' load_checkpoint =True'
+python train.py with 'gpu_settings={"device_id": [0] ,"torch_device": "cuda:0"} ' 

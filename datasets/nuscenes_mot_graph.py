@@ -276,6 +276,10 @@ class NuscenesMotGraph(object):
         # return new_instance_token_list
 
     def _contains_dummy_objects(self, boxes:List[Box]=None) -> bool:
+        """
+        Return True if list of filtered 3D-Detections (3D Bounding Boxes class) contains dummy boxes.
+        This is probably due to number of object in a frame being lower than the Knn-Parameter.
+        """
         box_list = boxes
         if box_list is None:
             box_list = self.graph_dataframe["boxes_list_all"]
@@ -288,6 +292,9 @@ class NuscenesMotGraph(object):
                 dummyObjectFlag = True
             i += 1
         return dummyObjectFlag
+
+    def contains_dummy_objects(self, boxes:List[Box]=None) -> bool:
+        return self._contains_dummy_objects(boxes=boxes)
 
     def assign_edge_labels(self, label_type:str):
         '''
@@ -494,3 +501,68 @@ class NuscenesMotGraph(object):
             print('After:\n{}'.format(self.graph_obj))
         
         self.graph_obj.to(self.device)
+
+class NuscenesMotGraphAnalyzer(NuscenesMotGraph):
+    '''
+    A subclass that serves to quickly analyze if the MotGraph is valid or not
+    Checks if the number of objects is below the given KNN
+    '''
+    def __init__(self,
+                    nuscenes_handle:NuScenes, start_frame:str , max_frame_dist:int = 3,
+                    filterBoxes_categoryQuery:Union[str,List[str]] = None,
+                    construction_possibility_checked = True,
+                    adapt_knn_param = False,
+                    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")) -> None:
+        # Inherit parent init
+        super().__init__(
+                    nuscenes_handle, start_frame , max_frame_dist,
+                    filterBoxes_categoryQuery,
+                    construction_possibility_checked,
+                    adapt_knn_param,
+                    device = device)
+
+    def _construct_graph_dataframe(self):
+        graph_dataframe = {}
+        # Load Center points for features from LIDAR pointcloud frame of reference
+        sensor = 'LIDAR_TOP'
+        sample_token = self.start_frame
+
+        # Compute Dict of Lists of Box-objects mapped by integer value that references the timeframe
+        # append dict to graph_dataframe
+        boxes_dict= {}
+        for i in range(self.max_frame_dist):
+            # Append new boxes
+            sample = self.nuscenes_handle.get('sample', sample_token)
+            lidar_top_data = self.nuscenes_handle.get('sample_data', sample['data'][sensor])
+            _, boxes, _= self.nuscenes_handle.get_sample_data(lidar_top_data['token'], selected_anntokens=None, use_flat_vehicle_coordinates =False)
+            # filter out all object that are not of class self.filterBoxes_categoryQuery
+            if( self.filterBoxes_categoryQuery is not None):
+                boxes = filter_boxes(self.nuscenes_handle, boxes= boxes, categoryQuery= self.filterBoxes_categoryQuery)
+            # Embed dummy objects if number of objects is smaller then any knn-Parameter
+            # this will also catch cases where no objects are left after filtering 
+            # there must be at least k + 1 elements such that one element can have k neighbors
+            if (len(boxes) < (self.KNN_PARAM_SPATIAL + 1)) \
+                or (len(boxes) < (self.KNN_PARAM_TEMPORAL + 1)):
+                spatial_difference = self.KNN_PARAM_SPATIAL + 1 - len(boxes)
+                temporal_difference = self.KNN_PARAM_TEMPORAL + 1 - len(boxes)
+                num_needed_boxes = max(spatial_difference, temporal_difference)
+                boxes.extend(self._construct_dummy_boxes(num_needed_boxes))
+                
+            boxes_dict[i] = boxes
+
+            #Move to next sample
+            sample_token = sample["next"]
+
+        graph_dataframe["boxes_dict"] = boxes_dict
+
+        # Combine all lists within boxes Dict into one list
+        # Add in chronological order
+        # append dict to graph_dataframe
+        box_list = []
+        for box_list_i_key in range(self.max_frame_dist):
+            box_list_i = graph_dataframe["boxes_dict"][box_list_i_key]
+            box_list = box_list + box_list_i
+
+        graph_dataframe["boxes_list_all"] = box_list
+
+        return graph_dataframe

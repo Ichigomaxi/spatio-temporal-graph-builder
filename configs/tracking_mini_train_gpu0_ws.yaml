@@ -7,7 +7,7 @@ cross_val_split:
 output_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn'
 
 # Config to load previous model
-load_checkpoint : True
+load_checkpoint : False
 # ckpt_path: 'experiments/path_/to/_checkpoint.ckpt'
 ckpt_path: 'experiments/05-04_18:29_train_mini_continuation_default_config/model_checkpoints/last.ckpt' # Only used during evaluation 
 
@@ -18,8 +18,8 @@ eval_dataset_mode: "mini_val"
 gpu_settings:
   device_type: "gpu"
   # Specify which GPUs to use
-  device_id: [1] # Specifically takes the gpu associated with cuda:1 
-  torch_device: 'cuda:1'
+  device_id: [0] # Specifically takes the gpu associated with cuda:1 
+  torch_device: 'cuda:0'
 
 train_params:
   batch_size: 4
@@ -43,14 +43,6 @@ train_params:
   include_custom_checkpointing : True
 
 dataset_params:
-  # Preprocessing ParamsL
-  load_valid_sequence_sample_list : True
-  # If the above is true then specify the path to the pickle files
-  # Must be absolutepath until now
-  # if mode not train or val then sequence_sample_list_train_path will be loaded into Dataset object
-  sequence_sample_list_train_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_mini_nuscenes/sequence_sample_list_mini_train.pkl'
-  sequence_sample_list_val_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_mini_nuscenes/sequence_sample_list_mini_val.pkl'
-  
   # Dataset Processing params:
   dataset_version: 'v1.0-trainval'
   dataroot : '/media/HDD2/Datasets/mini_nusc'

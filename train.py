@@ -80,20 +80,22 @@ def main(_config, _run):
     # Load Data 
     # nusc = NuScenes(version='v1.0-mini', dataroot=r"C:\Users\maxil\Documents\projects\master_thesis\mini_nuscenes", verbose=True)
     # nusc = NuScenes(version='v1.0-trainval', dataroot='/media/HDD2/Datasets/mini_nusc', verbose=True)
-    
+    train_dataset = None
+    eval_dataset = None
+
     train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'],
                                             mode =_config["train_dataset_mode"], 
                                             device=_config['gpu_settings']['torch_device'])
-
-    train_loader = DataLoader(train_dataset,
-                            batch_size = _config['train_params']['batch_size'],
-                            shuffle= True,
-                            num_workers=_config['train_params']['num_workers'])
 
     eval_dataset = NuscenesMOTGraphDataset(_config['dataset_params'],
                                     mode =_config["eval_dataset_mode"],
                                     nuscenes_handle = train_dataset.get_nuscenes_handle(),
                                     device =_config['gpu_settings']['torch_device'])
+    
+    train_loader = DataLoader(train_dataset,
+                            batch_size = _config['train_params']['batch_size'],
+                            shuffle= True,
+                            num_workers=_config['train_params']['num_workers'])
 
     eval_loader = DataLoader(eval_dataset,
                                 batch_size = _config['train_params']['batch_size'],
