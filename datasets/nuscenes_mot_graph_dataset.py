@@ -197,10 +197,14 @@ class NuscenesMOTGraphDataset(object):
                                     max_frame_dist = self.dataset_params['max_frame_dist'],
                                     filterBoxes_categoryQuery= self.dataset_params["filterBoxes_categoryQuery"],
                                     adapt_knn_param = self.dataset_params["adapt_knn_param"],
-                                    device= self.device)
+                                    device= self.device,
+                                    dataset_params= self.dataset_params)
 
         # Construct the Graph Network's input
-        mot_graph.construct_graph_object()
+        mot_graph.construct_graph_object(
+                        node_feature_mode = self.dataset_params['node_feature_mode'],
+                        edge_feature_mode = self.dataset_params['edge_feature_mode'])
+        
         if self.mode in ('train', 'val', "train_detect", "train_track",
                   "mini_train", "mini_val"):
             mot_graph.assign_edge_labels(self.dataset_params["label_type"])

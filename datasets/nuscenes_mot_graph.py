@@ -26,9 +26,6 @@ from nuscenes.utils.data_classes import Box
 
 class NuscenesMotGraph(object):
 
-    SPATIAL_SHIFT_TIMEFRAMES = 20
-    KNN_PARAM_TEMPORAL = 3
-    KNN_PARAM_SPATIAL = 3
     NODE_FEATURE_MODES = {"only_centers", "centers_and_time"}
     EDGE_LABEL_TYPES = {"binary", "multiclass"}
     DUMMY_TOKEN = "dummy_token"
@@ -37,8 +34,9 @@ class NuscenesMotGraph(object):
                     filterBoxes_categoryQuery:Union[str,List[str]] = None,
                     construction_possibility_checked = True,
                     adapt_knn_param = False,
-                    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
-
+                    device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+                    dataset_params: dict = None):
+        
         self.max_frame_dist = max_frame_dist
         self.nuscenes_handle = nuscenes_handle
         self.start_frame = start_frame
@@ -46,6 +44,18 @@ class NuscenesMotGraph(object):
         self.filterBoxes_categoryQuery = filterBoxes_categoryQuery # Is often 'vehicle.car'
         self.adapt_knn_param = adapt_knn_param
         self.device = device
+
+
+        self.SPATIAL_SHIFT_TIMEFRAMES, self.KNN_PARAM_TEMPORAL , self.KNN_PARAM_SPATIAL = None, None, None
+        if dataset_params is not None:
+            self.KNN_PARAM_SPATIAL = dataset_params["graph_construction_params"]["spatial_knn_num_neighbors"]
+            self.KNN_PARAM_TEMPORAL = dataset_params["graph_construction_params"]["temporal_knn_num_neighbors"]
+            self.SPATIAL_SHIFT_TIMEFRAMES = dataset_params["graph_construction_params"]["spatial_shift_timeframes"]
+            
+        else:
+            self.SPATIAL_SHIFT_TIMEFRAMES = 20
+            self.KNN_PARAM_TEMPORAL = 3
+            self.KNN_PARAM_SPATIAL = 3
 
         # Data-child object for pytorch
         self.graph_obj:Graph = None
@@ -146,7 +156,7 @@ class NuscenesMotGraph(object):
 
         # Combine all lists within centers Dict into one list
         # Add in chronological order
-        # Shift the different Timeframes by a defined constant NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES * timeframe
+        # Shift the different Timeframes by a defined constant self.SPATIAL_SHIFT_TIMEFRAMES * timeframe
         # Ensure that the memory is different than that from the Box-objects
         # List is torch.Tensor
         # append dict to graph_dataframe
@@ -157,7 +167,7 @@ class NuscenesMotGraph(object):
             t_centers_list_i = torch.from_numpy(centers_list_i).to(self.device)
             # print("t_centers_list_i",t_centers_list_i)
             # print("t_centers_list_i.shape",t_centers_list_i.shape)
-            t_centers_list_i += torch.tensor([0,0,NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES * centers_list_i_key]).to(self.device)
+            t_centers_list_i += torch.tensor([0,0,self.SPATIAL_SHIFT_TIMEFRAMES * centers_list_i_key]).to(self.device)
             t_centers_list = torch.cat([t_centers_list, t_centers_list_i], dim = 0 ).to(self.device)
 
         graph_dataframe["centers_list_all"] = t_centers_list
@@ -192,13 +202,13 @@ class NuscenesMotGraph(object):
         # Compute Spatial Edges
         t_spatial_edge_ixs = get_and_compute_spatial_edge_indices(
                     self.graph_dataframe,
-                    NuscenesMotGraph.KNN_PARAM_SPATIAL,
+                    self.KNN_PARAM_SPATIAL,
                     adapt_knn_param = self.adapt_knn_param,
                     device= self.device)
         # Compute Temporal Edges
         t_temporal_edge_ixs = get_and_compute_temporal_edge_indices(
                     self.graph_dataframe,
-                    NuscenesMotGraph.KNN_PARAM_TEMPORAL,
+                    self.KNN_PARAM_TEMPORAL,
                     adapt_knn_param = self.adapt_knn_param,
                     device= self.device)
 
@@ -342,11 +352,11 @@ class NuscenesMotGraph(object):
 
                 # Check that car_box and car_centers match
                 if not (is_valid_box_torch(node_a_box,node_a_center,
-                        spatial_shift_timeframes= NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES,
+                        spatial_shift_timeframes= self.SPATIAL_SHIFT_TIMEFRAMES,
                         device= self.device)\
                         and 
                         is_valid_box_torch(node_b_box,node_b_center,
-                        spatial_shift_timeframes= NuscenesMotGraph.SPATIAL_SHIFT_TIMEFRAMES,
+                        spatial_shift_timeframes= self.SPATIAL_SHIFT_TIMEFRAMES,
                         device = self.device)
                         ):
                     raise ValueError('A box does not correspond to a selected center')
@@ -481,8 +491,8 @@ class NuscenesMotGraph(object):
                                     dim= 0).to(self.device)
 
         # Add information to graph if it contains dummy Objects
-        bool_contains_dummies = self._contains_dummy_objects()            
-
+        bool_contains_dummies = self._contains_dummy_objects()   
+        
         # Build Data-graph object for pytorch model
         self.graph_obj = Graph(x = t_node_features,
                                edge_attr = t_edge_feats,

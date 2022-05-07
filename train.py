@@ -57,25 +57,36 @@ def main(_config, _run):
 
     sacred.commands.print_config(_run)
     make_deterministic(12345)
+    
+    #######################################################
+    # Determine Pytorch lightning model
+    model = None 
     hparams_dict = dict(_config)
-    # pytorch lightning model
-    model = MOTNeuralSolver(hparams = hparams_dict)
-    # load weights from previous checkpoint if desired
-    if _config['load_checkpoint']:
-        model = MOTNeuralSolver.load_from_checkpoint(checkpoint_path=_config['ckpt_path'] \
-                                                    if osp.exists(_config['ckpt_path'])  \
-                                                    else osp.join(_config['output_path'], _config['ckpt_path']))
 
+    # load model from previous checkpoint if desired OR create new model defined by hparams
+    if _config['load_checkpoint']:
+        checkpoint_path= _config['ckpt_path'] \
+                        if osp.exists(_config['ckpt_path'])  \
+                        else osp.join(_config['output_path'], _config['ckpt_path'])
+        # Determine if you only want to load the pretrained model's weights from checkpon with new hparams
+        # or if you want to load the model exactly as it was defined previously with previous hyperparameters
+        # Use case: continue training pretrained model or train new model with pretrained models weights. 
+        if _config['overwrite_saved_hparam']:
+            model = MOTNeuralSolver.load_from_checkpoint(checkpoint_path,hparams = hparams_dict)
+        else :
+            model = MOTNeuralSolver.load_from_checkpoint(checkpoint_path)
+            _config = model.hparams_initial
+    else:
+        model = MOTNeuralSolver(hparams = hparams_dict)
     run_str, save_dir = get_run_str_and_save_dir(_config['run_id'], _config['cross_val_split'], _config['add_date'])
 
-    # Define Logger
+    #######################################################
+    # Determine Logger
     if _config['train_params']['tensorboard']:
         logger = TensorBoardLogger(_config['output_path'], name='experiments', version=run_str)
-
     else:
         logger = None
 
-    
     #########################################
     # Load Data 
     # nusc = NuScenes(version='v1.0-mini', dataroot=r"C:\Users\maxil\Documents\projects\master_thesis\mini_nuscenes", verbose=True)
