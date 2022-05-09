@@ -16,6 +16,10 @@ from utils.evaluation import compute_mot_metrics
 
 import pandas as pd
 
+# for NuScenes eval
+from nuscenes.eval.common.config import config_factory
+from nuscenes.eval.tracking.evaluate import TrackingEval
+
 from sacred import SETTINGS
 SETTINGS.CONFIG.READ_ONLY_CONFIG=False
 
@@ -38,9 +42,7 @@ def main(_config, _run):
     model = MOTNeuralSolver.load_from_checkpoint(checkpoint_path=_config['ckpt_path'] if osp.exists(_config['ckpt_path'])  else osp.join(OUTPUT_PATH, _config['ckpt_path']))
     model.hparams.update({'eval_params':_config['eval_params'],
                           'data_splits':_config['data_splits']})
-    model.hparams['dataset_params']['precomputed_embeddings'] = _config['precomputed_embeddings']
-    model.hparams['dataset_params']['img_batch_size'] = _config['dataset_params']['img_batch_size']
-
+    
     # Get output MOT results files
     test_dataset = model.test_dataset()
     constr_satisf_rate = model.track_all_seqs(dataset=test_dataset,
