@@ -14,7 +14,7 @@ ckpt_path: 'experiments/05-03_20:07_train_w_default_config/checkpoints/epoch=12-
 # Config for modes from the nuscenes split
 train_dataset_mode: "train"
 eval_dataset_mode: "val"
-test_dataset_mode: 
+test_dataset_mode: "mini_val"
 
 gpu_settings:
   device_type: "gpu"

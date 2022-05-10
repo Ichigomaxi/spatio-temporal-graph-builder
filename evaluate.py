@@ -20,6 +20,8 @@ import pandas as pd
 from nuscenes.eval.common.config import config_factory
 from nuscenes.eval.tracking.evaluate import TrackingEval
 
+from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
+
 from sacred import SETTINGS
 SETTINGS.CONFIG.READ_ONLY_CONFIG=False
 
@@ -43,14 +45,21 @@ def main(_config, _run):
     model.hparams.update({'eval_params':_config['eval_params'],
                           'data_splits':_config['data_splits']})
     
-    # Get output MOT results files
-    test_dataset = model.test_dataset()
+    # Get output MOT results files ###############
+
+    # Load test or validation dataset
+    # test_dataset = model.test_dataset()
+    test_dataset = NuscenesMOTGraphDataset(_config['dataset_params'],
+                                            mode = _config['test_dataset_mode'], 
+                                            device=_config['gpu_settings']['torch_device'])
+
     constr_satisf_rate = model.track_all_seqs(dataset=test_dataset,
                                               output_files_dir = out_files_dir,
                                               use_gt = False,
                                               verbose=True)
 
     # If there's GT available (e.g. if testing on train sequences) try to compute MOT metrics
+    # Nuscenes-Case: For evaluation on validation split
     try:
         mot_metrics_summary = compute_mot_metrics(gt_path=osp.join(DATA_PATH, 'MOT_eval_gt'),
                                                   out_mot_files_path=out_files_dir,

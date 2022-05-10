@@ -27,6 +27,8 @@ from datasets.nuscenes_mot_graph import NuscenesMotGraph
 from model.mpn import MOTMPNet
 from utils.path_cfg import OUTPUT_PATH
 
+from nuscenes.eval.tracking.data_classes import TrackingBox
+
 class MOTNeuralSolver(pl.LightningModule):
     """
     Pytorch Lightning wrapper around the MPN defined in model/mpn.py.
@@ -193,3 +195,34 @@ class MOTNeuralSolver(pl.LightningModule):
         log_dict = {'val_loss_epochend': metrics['loss/val'], 'log_epochend': metrics}
         self.log_dict(log_dict)
         return log_dict
+
+    def track_all_seqs(self, output_files_dir, dataset, use_gt = False, verbose = False):
+        """
+        Used for Inference step
+        """
+
+        # Initiallize some kind of Tracker object
+        tracker = MPNTracker(dataset=dataset,
+                             graph_model=self.model,
+                             use_gt=use_gt,
+                             eval_params=self.hparams['eval_params'],
+                             dataset_params=self.hparams['dataset_params'])
+
+
+        # Track detection sequence by sequence
+        constraint_sr = pd.Series(dtype=float)
+        for seq_name in dataset.seq_names:
+            print("Tracking", seq_name)
+            if verbose:
+                print("Tracking sequence ", seq_name)
+
+            os.makedirs(output_files_dir, exist_ok=True)
+            _, constraint_sr[seq_name] = tracker.track(seq_name, output_path=osp.join(output_files_dir, seq_name + '.txt'))
+
+            if verbose:
+                print("Done! \n")
+
+
+        constraint_sr['OVERALL'] = constraint_sr.mean()
+
+        return constraint_sr
