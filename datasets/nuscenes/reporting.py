@@ -47,7 +47,9 @@ def build_results_dict(instance: TrackingBox, frame_token: str) -> Dict[str, Any
     track_dict["tracking_id"] = instance.tracking_id
     track_dict["tracking_name"] = instance.tracking_name # name_from_id(instance.class_id)
     track_dict["tracking_score"] = instance.tracking_score # confidence 
-    
+
+    # track_dist = instance.serialize()
+
     return track_dict
 
 

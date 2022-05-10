@@ -37,10 +37,13 @@ class NuscenesDataset(object):
                                     verbose=True)     
         
         #Set of strings
+        # available official splits in current dataset_version
         self.splits: Set[str] = set(s for s in self.ALL_SPLITS if s.split("_")[0] in dataset_version)
+        # All sequences available that are reachable by the nuscenes handle
         self.sequences_by_name: Dict[str, Any] = {
             scene["name"]: scene for scene in self.nuscenes_handle.scene
         }
+        # Dict of splits with corresponding scenes in the form of names
         self.splits_to_scene_names: Dict[str, List[str]] = create_splits_scenes()
         print("Done parsing")
 

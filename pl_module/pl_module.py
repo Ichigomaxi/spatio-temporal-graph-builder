@@ -28,6 +28,8 @@ from model.mpn import MOTMPNet
 from utils.path_cfg import OUTPUT_PATH
 
 from nuscenes.eval.tracking.data_classes import TrackingBox
+from tracker.mpn_tracker import MPNTracker, NuscenesMPNTracker
+from utils.misc import save_pickle
 
 class MOTNeuralSolver(pl.LightningModule):
     """
@@ -196,33 +198,50 @@ class MOTNeuralSolver(pl.LightningModule):
         self.log_dict(log_dict)
         return log_dict
 
+    # def predict_step(self):
+    #     """
+    #     Overwrite for inference
+    #     """
+    #     pass
+
+    # def test_step(self):
+    #     """
+    #     Overwrite for testing
+    #     """
+    #     pass
+
     def track_all_seqs(self, output_files_dir, dataset, use_gt = False, verbose = False):
         """
-        Used for Inference step
+        Used for Inference step and evaluation
         """
 
         # Initiallize some kind of Tracker object
-        tracker = MPNTracker(dataset=dataset,
-                             graph_model=self.model,
-                             use_gt=use_gt,
-                             eval_params=self.hparams['eval_params'],
-                             dataset_params=self.hparams['dataset_params'])
+        tracker = NuscenesMPNTracker(
+                            dataset = dataset,
+                             graph_model = self.model,
+                             use_gt= use_gt,
+                             eval_params = self.hparams['eval_params'],
+                             dataset_params = self.hparams['dataset_params'])
 
 
         # Track detection sequence by sequence
-        constraint_sr = pd.Series(dtype=float)
-        for seq_name in dataset.seq_names:
+        # constraint_sr = pd.Series(dtype=float)
+        ouput_tracking_dict = {}
+        split = self.hparams["test_dataset_mode"]
+        sequence_names = dataset.nuscenes_dataset.splits_to_scene_names[split]
+        for seq_name in sequence_names:
             print("Tracking", seq_name)
             if verbose:
                 print("Tracking sequence ", seq_name)
 
+            # computing tracking for a certain scene/sequence 
+            # Return list of tracked bounding boxes as Trackbox-class
             os.makedirs(output_files_dir, exist_ok=True)
-            _, constraint_sr[seq_name] = tracker.track(seq_name, output_path=osp.join(output_files_dir, seq_name + '.txt'))
-
+            ouput_tracking_dict[seq_name] = tracker.track(seq_name, output_path=osp.join(output_files_dir, seq_name + '.txt'))
+            
+            # save_pickle()
+            
             if verbose:
                 print("Done! \n")
 
-
-        constraint_sr['OVERALL'] = constraint_sr.mean()
-
-        return constraint_sr
+        return ouput_tracking_dict
