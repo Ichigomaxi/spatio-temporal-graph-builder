@@ -210,7 +210,10 @@ class MOTNeuralSolver(pl.LightningModule):
     #     """
     #     pass
 
-    def track_all_seqs(self, output_files_dir, dataset, use_gt = False, verbose = False):
+    def track_all_seqs(self, output_files_dir,
+                        dataset:NuscenesMOTGraphDataset, 
+                        use_gt:bool = False, 
+                        verbose:bool = False):
         """
         Used for Inference step and evaluation
         """
@@ -225,19 +228,19 @@ class MOTNeuralSolver(pl.LightningModule):
 
 
         # Track detection sequence by sequence
-        # constraint_sr = pd.Series(dtype=float)
         ouput_tracking_dict = {}
         split = self.hparams["test_dataset_mode"]
-        sequence_names = dataset.nuscenes_dataset.splits_to_scene_names[split]
-        for seq_name in sequence_names:
-            print("Tracking", seq_name)
+        # sequence_names = dataset.nuscenes_dataset.splits_to_scene_names[split]
+        scene_tables = dataset.seqs_to_retrieve
+        for scene_table in scene_tables:
+            seq_name = scene_table['name']
             if verbose:
                 print("Tracking sequence ", seq_name)
 
             # computing tracking for a certain scene/sequence 
             # Return list of tracked bounding boxes as Trackbox-class
             os.makedirs(output_files_dir, exist_ok=True)
-            ouput_tracking_dict[seq_name] = tracker.track(seq_name, output_path=osp.join(output_files_dir, seq_name + '.txt'))
+            ouput_tracking_dict[seq_name] = tracker.track(scene_table, output_path=osp.join(output_files_dir, seq_name + '.json'))
             
             # save_pickle()
             

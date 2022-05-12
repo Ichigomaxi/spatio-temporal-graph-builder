@@ -1,5 +1,6 @@
 
 from curses import noecho
+from typing import Dict, List, Tuple
 from datasets.nuscenes_mot_graph import NuscenesMotGraph, NuscenesMotGraphAnalyzer
 from datasets.NuscenesDataset import NuscenesDataset
 from nuscenes.nuscenes import NuScenes
@@ -39,7 +40,8 @@ class NuscenesMOTGraphDataset(object):
         
         self.nuscenes_handle = self.nuscenes_dataset.nuscenes_handle
 
-        self.seqs_to_retrieve = self._get_seqs_to_retrieve_from_splits(splits)
+        self.seqs_to_retrieve:List[dict] = self._get_seqs_to_retrieve_from_splits(splits)
+        self.seq_frame_ixs:List[Tuple[str,str]] = []
 
         if self.seqs_to_retrieve:
             # Index the dataset (i.e. assign a pair (scene, starting frame) to each integer from 0 to len(dataset) -1)
@@ -70,9 +72,10 @@ class NuscenesMOTGraphDataset(object):
             else:
                 self.seq_frame_ixs = self._index_dataset()
 
-    def _get_seqs_to_retrieve_from_splits(self, splits):
+    def _get_seqs_to_retrieve_from_splits(self, splits)-> List[dict]:
         """
-        Returns list of sequences(nuscenes scene-objects) corresponding to the mode
+        Returns list of sequences(nuscenes scene-objects) corresponding to the mode 
+        and to the available sequences to the specific nuscenes handle
         """
         seqs_to_retrieve = None
         if splits is None:
@@ -168,6 +171,24 @@ class NuscenesMOTGraphDataset(object):
         filtered_sample_list = filtered_sample_list_new
 
         return filtered_sample_list
+
+    def get_samples_from_one_scene(self,searched_scene_token:str) -> List[Tuple[str,str]]:
+        """
+        Returns a List of all scene_token-sample_token tuples that correspond to a certain scene
+        Args:
+        scene_token
+
+        """
+        list_scene_sample_tuple:List[Tuple[str,str]] = [] 
+
+        for tuple in self.seq_frame_ixs:
+            scene_token_current = tuple[0]
+            # sample_token_current = tuple[1]
+            if(scene_token_current == searched_scene_token):
+                list_scene_sample_tuple.append(tuple)
+
+        return list_scene_sample_tuple
+        
 
     def get_nuscenes_handle(self):
         """

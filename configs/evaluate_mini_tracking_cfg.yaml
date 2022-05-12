@@ -20,7 +20,7 @@ gpu_settings:
   device_type: "gpu"
   # Specify which GPUs to use
   device_id: [1] # Specifically takes the gpu associated with cuda:1 
-  torch_device: 'cuda:1'
+  torch_device: 'cuda:0'
 
 # train_params:
 #   batch_size: 4
