@@ -6,6 +6,7 @@ import sys
 # import datasets.NuscenesDataset
 from datasets.NuscenesDataset import NuscenesDataset
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
+from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 
 import open3d as o3d
 from open3d import geometry
@@ -153,7 +154,7 @@ def visualize_eval_graph(mot_graph:NuscenesMotGraph):
     # Active and inactive Edges
     line_set_sequence = add_line_set_labeled(nodes= mot_graph.graph_obj.x[:,:3],
                                     edge_indices= mot_graph.graph_obj.edge_index,
-                                    edge_labels= mot_graph.graph_obj.edge_labels)
+                                    edge_labels= mot_graph.graph_obj.active_edges)
     geometry_list += line_set_sequence
     #----------------------------------------
 
@@ -179,7 +180,7 @@ def visualize_output_graph(mot_graph:NuscenesMotGraph):
     # active_edges = mot_graph.graph_obj.active_edges
     line_set_sequence = add_line_set_labeled(nodes= mot_graph.graph_obj.x[:,:3],
                                     edge_indices= mot_graph.graph_obj.edge_index,
-                                    edge_labels= mot_graph.graph_obj.active_edges)
+                                    edge_labels= mot_graph.graph_obj.edge_labels)
 
     geometry_list += line_set_sequence
     #----------------------------------------
@@ -247,6 +248,13 @@ def main(mode:str = "single", filterBoxes_categoryQuery="vehicle.car"):
                                     label_type="binary",
                                     filterBoxes_categoryQuery = filterBoxes_categoryQuery)
         MotGraphList.append(MotGraph_object)
+    elif mode == "mini_train":
+        pass
+    elif mode == "mini_val":
+        dataset_params = {}
+        mot_graph_dataset = NuscenesMOTGraphDataset(dataset_params= dataset_params,
+                                                    mode= mode, 
+                                                    nuscenes_handle=dataset.nuscenes_handle)
     else:
         MotGraphList = dataset.get_nuscenes_mot_graph_list_debugging(True,
                                     specific_device=None,
