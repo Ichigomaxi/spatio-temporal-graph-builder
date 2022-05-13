@@ -287,9 +287,12 @@ class MOTNeuralSolver(pl.LightningModule):
             inferred_mot_graphs.append(mot_graph)
         # save objects for visualization
         if(self.hparams['eval_params']['save_graphs']):
+            os.makedirs(output_files_dir, exist_ok=True) # Make sure dir exists
+            # Save in pickle format
             pickle_file_path = osp.join(output_files_dir,"inferred_mot_graphs.pkl")
-            os.makedirs(output_files_dir, exist_ok=True)
-            save_pickle(inferred_mot_graphs,pickle_file_path)
+            with open(pickle_file_path, 'wb') as f:
+                torch.save(inferred_mot_graphs,f, pickle_protocol = 4)
+            # save_pickle(inferred_mot_graphs,pickle_file_path)
         
 
 
