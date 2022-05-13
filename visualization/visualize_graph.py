@@ -134,7 +134,8 @@ def visualize_input_graph(mot_graph:NuscenesMotGraph):
     
 
     return geometry_list
-def visualize_output_graph(mot_graph:NuscenesMotGraph):
+
+def visualize_eval_graph(mot_graph:NuscenesMotGraph):
     geometry_list = []
 
     #----------------------------------------
@@ -153,6 +154,33 @@ def visualize_output_graph(mot_graph:NuscenesMotGraph):
     line_set_sequence = add_line_set_labeled(nodes= mot_graph.graph_obj.x[:,:3],
                                     edge_indices= mot_graph.graph_obj.edge_index,
                                     edge_labels= mot_graph.graph_obj.edge_labels)
+    geometry_list += line_set_sequence
+    #----------------------------------------
+
+    return geometry_list
+
+def visualize_output_graph(mot_graph:NuscenesMotGraph):
+    geometry_list = []
+
+    #----------------------------------------
+    # Include reference frame
+    mesh_frame = geometry.TriangleMesh.create_coordinate_frame(
+                size=5, origin=[0, 0, 0])  # create coordinate frame
+    geometry_list += [mesh_frame]
+
+    #----------------------------------------
+    # Color Points/Nodes
+    point_sequence = add_pointcloud(mot_graph.graph_obj.x[:,:3],
+                                    color= None)
+    geometry_list += point_sequence
+    #----------------------------------------
+    # Active and inactive Edges
+    # edge_preds = mot_graph.graph_obj.edge_preds
+    # active_edges = mot_graph.graph_obj.active_edges
+    line_set_sequence = add_line_set_labeled(nodes= mot_graph.graph_obj.x[:,:3],
+                                    edge_indices= mot_graph.graph_obj.edge_index,
+                                    edge_labels= mot_graph.graph_obj.active_edges)
+
     geometry_list += line_set_sequence
     #----------------------------------------
 
@@ -206,7 +234,8 @@ def visualize_basic_graph(mot_graph:NuscenesMotGraph):
     #----------------------------------------
 
     return geometry_list
-
+def visualize_geometry_list(geometry_list:list):
+    o3d.visualization.draw_geometries(geometry_list)
 
 def main(mode:str = "single", filterBoxes_categoryQuery="vehicle.car"):
     dataset = NuscenesDataset('v1.0-mini', dataroot=r"C:\Users\maxil\Documents\projects\master_thesis\mini_nuscenes")

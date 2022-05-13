@@ -94,7 +94,9 @@ data_splits: # See nuscenes.datasplit()
 eval_params:
   # Logging / Metrics reporting params
   tensorboard: True
-  
+  debbuging_mode : True
+  visualize_graph : True
+  save_graphs : True
   # check_val_every_n_epoch: 9999
   # val_percent_check: 0.15 # Percentage of the entire dataset used each time that validation loss is computed
   # mot_metrics_to_log: ['mota', 'norm_mota', 'idf1', 'norm_idf1', 'num_switches', 'num_misses', 'num_false_positives', 'num_fragmentations', 'constr_sr']

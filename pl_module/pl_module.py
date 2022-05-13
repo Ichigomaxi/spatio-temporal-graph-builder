@@ -37,6 +37,8 @@ from utils.misc import save_pickle
 
 from utils.evaluation import assign_definitive_connections
 
+from visualization.visualize_graph import visualize_eval_graph, visualize_geometry_list
+
 class MOTNeuralSolver(pl.LightningModule):
     """
     Pytorch Lightning wrapper around the MPN defined in model/mpn.py.
@@ -253,7 +255,14 @@ class MOTNeuralSolver(pl.LightningModule):
         seq_sample_list = dataset.seq_frame_ixs
         
         inferred_mot_graphs = []
-        for i in range(len(seq_sample_list)):
+
+        num_mot_graph_in_dataset = len(seq_sample_list)
+        # limit number for debugging purposes
+        if self.hparams['eval_params']['debbuging_mode']:
+            upper_bound = 5
+            num_mot_graph_in_dataset = upper_bound
+        
+        for i in range(num_mot_graph_in_dataset):
             # scene_token, sample_token = seq_sample_list[i]
             # mot_graph = dataset.get_from_frame_and_seq(scene_token,sample_token,
             #         return_full_object=True,
@@ -272,9 +281,16 @@ class MOTNeuralSolver(pl.LightningModule):
             active_edges = assign_definitive_connections(mot_graph.graph_obj)
             mot_graph.graph_obj.active_edges = active_edges
             # assign_track_ids()
-            append(inferred_mot_graphs)
+            if(self.hparams['eval_params']['visualize_graph']):
+                geometry_list = visualize_eval_graph(mot_graph)
+                visualize_geometry_list(geometry_list)
+            inferred_mot_graphs.append(mot_graph)
         # save objects for visualization
-        save_pickle(inferred_mot_graphs,output_files_dir)
+        if(self.hparams['eval_params']['save_graphs']):
+            pickle_file_path = osp.join(output_files_dir,"inferred_mot_graphs.pkl")
+            os.makedirs(output_files_dir, exist_ok=True)
+            save_pickle(inferred_mot_graphs,pickle_file_path)
+        
 
 
 
