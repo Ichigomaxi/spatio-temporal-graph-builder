@@ -46,6 +46,25 @@ def compute_nuscenes_3D_mot_metrics(gt_path, out_mot_files_path, seqs, print_res
     summary = None 
     return summary
 
+def assign_definitive_connections(graph_object):
+    edge_indices = graph_object.edge_index
+    edge_preds = graph_object.edge_preds 
+
+    active_connections = torch.zeros_like(edge_preds)
+    # set 
+    # for edge in edge_indices:
+    #     ref_node = edge[0]
+    #     neigh_node = edge[1]
+    is_active_edge = edge_preds >= 0.5
+
+    active_connections = torch.where(edge_preds >= 0.5,1,0)
+
+
+    return active_connections
+
+#TrackID = InstanceID
+def assign_track_ids():
+    pass
 
 # def compute_mot_metrics(gt_path, out_mot_files_path, seqs, print_results = True):
 #     """

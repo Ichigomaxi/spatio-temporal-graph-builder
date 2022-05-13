@@ -31,9 +31,7 @@ def get_filtered_centers(nusc:NuScenes,sample_token:str):
     centers = get_box_centers(car_boxes)
     return centers
 
-#TrackID = InstanceID
-def assign_track_ids():
-    pass
+
 
 #Convert TrackIds into one_hot-encoded vector
 def convert_into_one_hot_encoding(

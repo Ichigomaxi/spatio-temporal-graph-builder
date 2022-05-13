@@ -1,5 +1,5 @@
 # Config for naming logging directory
-run_id: 'train_w_default_config'
+run_id: 'train_non_weighted_loss'
 add_date: True
 cross_val_split: 
 # Config for logging directory path
@@ -9,7 +9,7 @@ output_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn'
 load_checkpoint : False # Set to true to load a previous checkpoint
 overwrite_saved_hparam: False # Set to true to if you want to use new hyperparameters(Defined in this config file) 
 # ckpt_path: 'experiments/path_/to/_checkpoint.ckpt'
-ckpt_path: 'experiments/05-03_20:07_train_w_default_config/checkpoints/epoch=12-step=86878.ckpt'
+ckpt_path: 
 
 # Config for modes from the nuscenes split
 train_dataset_mode: "train"
@@ -19,11 +19,11 @@ test_dataset_mode:
 gpu_settings:
   device_type: "gpu"
   # Specify which GPUs to use
-  device_id: [1] # Specifically takes the gpu associated with cuda:1 
-  torch_device: 'cuda:1'
+  device_id: [0] # Specifically takes the gpu associated with cuda:1 
+  torch_device: 'cuda:0'
 
 train_params:
-  batch_size: 4
+  batch_size: 8
   num_epochs: 200
   optimizer:
     type: Adam
@@ -34,7 +34,7 @@ train_params:
   lr_scheduler:
     type:
     args:
-      step_size: 7
+      step_size: 5
       gamma: 0.5
 
   num_workers: 0 # Used for dataloaders
@@ -45,7 +45,7 @@ train_params:
   include_custom_checkpointing : True
   include_early_stopping : True
   loss_params:
-    weighted_loss: True
+    weighted_loss: False
 
 dataset_params:
   # Preprocessing ParamsL

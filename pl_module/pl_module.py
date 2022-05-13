@@ -5,8 +5,10 @@ This is serves as inspiration for our own code
 '''
 import os
 import os.path as osp
+from pickletools import read_uint1
 from typing import Dict
 from cv2 import log
+from numpy import append
 
 import pandas as pd
 
@@ -20,9 +22,11 @@ from torch.nn import functional as F
 
 import pytorch_lightning as pl
 from datasets.NuscenesDataset import NuscenesDataset
+# from datasets.nuscenes.reporting import save_to_json_file
 
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
+from utils.evaluation import assign_track_ids
 
 from model.mpn import MOTMPNet
 from utils.path_cfg import OUTPUT_PATH
@@ -30,6 +34,8 @@ from utils.path_cfg import OUTPUT_PATH
 from nuscenes.eval.tracking.data_classes import TrackingBox
 from tracker.mpn_tracker import MPNTracker, NuscenesMPNTracker
 from utils.misc import save_pickle
+
+from utils.evaluation import assign_definitive_connections
 
 class MOTNeuralSolver(pl.LightningModule):
     """
@@ -49,6 +55,7 @@ class MOTNeuralSolver(pl.LightningModule):
         self.model = self.load_model()
         self.skipped_batches = 0
         self.skipped_batches_val = 0
+        self.skipped_batches_test = 0
     
     def forward(self, x):
         self.model(x)
@@ -116,13 +123,15 @@ class MOTNeuralSolver(pl.LightningModule):
                 dummy_coeff = 1
 
             # Define Balancing weight
+            
             positive_vals = batch.edge_labels.sum()
 
-            if positive_vals:
+            if positive_vals and \
+                (self.hparams['train_params']['loss_params']['weighted_loss'] == True):
                 pos_weight = (batch.edge_labels.shape[0] - positive_vals) / positive_vals
 
             else: # If there are no positives labels, avoid dividing by zero
-                pos_weight = torch.zeros(1)
+                pos_weight = torch.zeros(1).to(self.device)
 
             # Compute Weighted BCE:
             loss = 0
@@ -157,7 +166,8 @@ class MOTNeuralSolver(pl.LightningModule):
             if train_val == 'train':
                 self.skipped_batches += 1
             else:
-                self.skipped_batches_val += 1
+                self.skipped_batches_val += 1\
+            # TODO remove this return?
             return None
 
         logs = {**{'loss': loss}}
@@ -198,17 +208,75 @@ class MOTNeuralSolver(pl.LightningModule):
         self.log_dict(log_dict)
         return log_dict
 
-    # def predict_step(self):
+
+    def inference_step(self,batch):
+        # compute output logits given input batch
+        logits = self.model(batch)['classified_edges'][-1].view(-1)
+        # compute the probability of the edges belonging to class 1 == "active"/"Connecting" edge
+        edge_preds = torch.sigmoid(logits)
+        # probabilities = torch.sigmoid(logits_output)
+        # Skip batches by returning None and increase counter
+        # self.log('edge_preds', edge_preds)
+
+        return edge_preds
+    
+    # def predict_step(self, batch, batch_idx):
     #     """
     #     Overwrite for inference
     #     """
     #     pass
 
-    # def test_step(self):
+    # def test_step(self, batch, batch_idx):
     #     """
     #     Overwrite for testing
     #     """
-    #     pass
+    #     batch.to(self.device)
+    #     if any(batch.contains_dummies):
+    #         self.skipped_batches_test += 1
+    #         return None
+    #     probabilities = self.inference_step(batch) 
+    #     active_connections = assign_definitive_connections(batch)
+        
+    #     return {'probabilities': probabilities,
+    #                 'active_connections':active_connections}
+
+    # def test_epoch_end(self, outputs):
+    #     self.skipped_batches_test = 0
+
+    def track_single_graphs(self, output_files_dir,
+                        dataset:NuscenesMOTGraphDataset, 
+                        use_gt:bool = False, 
+                        verbose:bool = False):
+        """
+        Used for Inference step and evaluation
+        """
+        seq_sample_list = dataset.seq_frame_ixs
+        
+        inferred_mot_graphs = []
+        for i in range(len(seq_sample_list)):
+            # scene_token, sample_token = seq_sample_list[i]
+            # mot_graph = dataset.get_from_frame_and_seq(scene_token,sample_token,
+            #         return_full_object=True,
+            #         inference_mode=True)
+            seq_name, start_frame = dataset.seq_frame_ixs[i]
+            mot_graph = dataset.get_from_frame_and_seq(
+                                        seq_name = seq_name,
+                                        start_frame = start_frame,
+                                        return_full_object=True,
+                                        inference_mode=True)
+
+            # logits = self.model(mot_graph.graph_obj)['classified_edges'][-1].view(-1)
+            # edge_preds = torch.sigmoid(logits)
+            edge_preds = self.inference_step(mot_graph.graph_obj)
+            mot_graph.graph_obj.edge_preds = edge_preds
+            active_edges = assign_definitive_connections(mot_graph.graph_obj)
+            mot_graph.graph_obj.active_edges = active_edges
+            # assign_track_ids()
+            append(inferred_mot_graphs)
+        # save objects for visualization
+        save_pickle(inferred_mot_graphs,output_files_dir)
+
+
 
     def track_all_seqs(self, output_files_dir,
                         dataset:NuscenesMOTGraphDataset, 

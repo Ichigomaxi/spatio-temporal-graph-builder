@@ -1,5 +1,5 @@
 # Config for naming logging directory
-run_id: 'evaluation'
+run_id: 'evaluation_single_graphs'
 add_date: True
 
 # Config for logging directory path
@@ -20,7 +20,7 @@ gpu_settings:
   device_type: "gpu"
   # Specify which GPUs to use
   device_id: [1] # Specifically takes the gpu associated with cuda:1 
-  torch_device: 'cuda:0'
+  torch_device: 'cuda:1'
 
 # train_params:
 #   batch_size: 4
