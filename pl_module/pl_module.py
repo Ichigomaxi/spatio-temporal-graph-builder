@@ -278,9 +278,15 @@ class MOTNeuralSolver(pl.LightningModule):
             # edge_preds = torch.sigmoid(logits)
             edge_preds = self.inference_step(mot_graph.graph_obj)
             mot_graph.graph_obj.edge_preds = edge_preds
-            active_edges = assign_definitive_connections(mot_graph.graph_obj)
-            mot_graph.graph_obj.active_edges = active_edges
-            # assign_track_ids()
+            # Compute connections
+            assign_definitive_connections(mot_graph)
+            # mot_graph.graph_obj.active_edges = active_edges
+            # Assign Tracks
+            # assign_track_ids(mot_graph)
+            # Build TrackingBox List for evaluation
+            
+
+            
             if(self.hparams['eval_params']['visualize_graph']):
                 geometry_list = visualize_eval_graph(mot_graph)
                 visualize_geometry_list(geometry_list)
@@ -292,7 +298,6 @@ class MOTNeuralSolver(pl.LightningModule):
             pickle_file_path = osp.join(output_files_dir,"inferred_mot_graphs.pkl")
             with open(pickle_file_path, 'wb') as f:
                 torch.save(inferred_mot_graphs,f, pickle_protocol = 4)
-            # save_pickle(inferred_mot_graphs,pickle_file_path)
         
 
 

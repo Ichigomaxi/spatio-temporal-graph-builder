@@ -17,9 +17,12 @@ from torch_scatter import scatter_add
 from pytorch_lightning import Callback
 
 import re
+from datasets.nuscenes_mot_graph import NuscenesMotGraph
+from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 
 from utils.misc import load_pickle, save_pickle
 
+from torch.nn import functional
 # from nuscenes.eval.tracking.data_classes import TrackingConfig
 # from nuscenes.eval.tracking.evaluate import TrackingEval
 
@@ -46,21 +49,94 @@ def compute_nuscenes_3D_mot_metrics(gt_path, out_mot_files_path, seqs, print_res
     summary = None 
     return summary
 
-def assign_definitive_connections(graph_object):
-    edge_indices = graph_object.edge_index
-    edge_preds = graph_object.edge_preds 
+
+def assign_definitive_connections(mot_graph:NuscenesMotGraph):
+
+    def filter_for_past_edges(incoming_edge_idx, current_timeframe:int):
+        '''
+        incoming_edge_idx : torch.tensor, shape(num_incoming_edges)
+        current_timeframe: int
+        '''
+        past_edges = None
+        # Determine Future timeframes
+        max_possible_timeframe = (mot_graph.max_frame_dist-1)
+        future_timeframes = range(max_possible_timeframe, current_timeframe , -1)
+        # Last frame has no connections to past frames
+        # Just continoue with given edges
+        if max_possible_timeframe == current_timeframe:
+            return incoming_edge_idx
+        
+        # Determine all future nodes indices
+        future_node_idx = []
+        for timeframe in future_timeframes: 
+            future_nodes_from_frame_i_mask = mot_graph.graph_dataframe["timeframes_all"] == timeframe
+            future_node_idx_from_frame_i = torch.nonzero(future_nodes_from_frame_i_mask, as_tuple=True)[0]
+            future_node_idx.append(future_node_idx_from_frame_i)
+        future_node_idx = torch.cat(future_node_idx) # concatenate
+
+        #Check wich edges connect to future nodes
+        incoming_edge_indices = mot_graph.graph_obj.edge_index[:,incoming_edge_idx] # shape: 2,num_incoming_edge_idx
+        rows:torch.Tensor = incoming_edge_indices[0] 
+        columns:torch.Tensor = incoming_edge_indices[1]
+        test_tensor = columns.eq(future_node_idx.unsqueeze(dim=1)) # unqueeze to make it broadcastable
+        test_tensor = test_tensor.sum(dim= 0)
+        # test_if_self = (mot_graph.graph_obj.edge_index[0] == mot_graph.graph_obj.edge_index[1].unsqueeze(1))
+        # print(test_if_self.sum(dim = 0).all() == False)
+        assert test_tensor.all() == False, \
+            'Future node as target node! Invalid!' + \
+                ' \Target node must be part of current timeframe/' + \
+                    ' must be the same for all incoming edges'
+        edges_connecting_to_future_nodes_mask = rows.eq(future_node_idx.unsqueeze(dim=1)).sum(dim= 0) # integer Tensor I think
+        edges_connecting_to_future_nodes_mask = edges_connecting_to_future_nodes_mask >= 1 # Make into torch.ByteTensor
+        edges_connecting_to_past_nodes_mask = ~edges_connecting_to_future_nodes_mask
+        past_edges = incoming_edge_idx[edges_connecting_to_past_nodes_mask]
+        return past_edges
+
+    edge_indices = mot_graph.graph_obj.edge_index
+    edge_preds = mot_graph.graph_obj.edge_preds 
+    mot_graph.graph_obj.x
 
     active_connections = torch.zeros_like(edge_preds)
-    # set 
-    # for edge in edge_indices:
-    #     ref_node = edge[0]
-    #     neigh_node = edge[1]
-    is_active_edge = edge_preds >= 0.5
+    tracking_confidence_list = torch.zeros_like(edge_preds)
+    active_neighbors = torch.zeros_like(edge_preds)
 
-    active_connections = torch.where(edge_preds >= 0.5,1,0)
+    timeframes = range(1,mot_graph.max_frame_dist) # start at 1 to skip first frame
+    # Iterate in reverse to start from the last frame
+    for i in reversed(timeframes): 
+        # filter nodes from frame i
+        nodes_from_frame_i_mask = mot_graph.graph_dataframe["timeframes_all"] == i
+        # nodes_from_frame_i_mask = ~nodes_from_frame_i_mask
+        node_idx_from_frame_i = torch.nonzero(nodes_from_frame_i_mask, as_tuple=True)[0]
+        # filter their incoming edges
+        for node_id in node_idx_from_frame_i:
+            incoming_edge_idx = []
+            rows, columns = edge_indices[0],edge_indices[1] # COO-format
+            edge_mask:torch.Tensor = torch.eq(columns, node_id)
+            incoming_edge_idx = edge_mask.nonzero().squeeze()
+            incoming_edge_idx = filter_for_past_edges(incoming_edge_idx, i)
+            # Get edge predictions and provide the active neighbor and its tracking confindence
+            incoming_edge_predictions = edge_preds[incoming_edge_idx]
+            probabilities = functional.softmax(incoming_edge_predictions, dim=0)
+            local_index = torch.argmax(probabilities, dim = 0)
+            # look for the global edge index
+            global_index = incoming_edge_idx[local_index]
+            active_edge_id = global_index
 
+            # assert len(active_edge_id) == 1,"more than one active connection is ambigous!"
 
-    return active_connections
+            tracking_confidence = probabilities[local_index] # tracking confidence for evaluation AMOTA-metric
+            
+            # set active edges
+            active_edge = edge_indices[:,active_edge_id]
+            assert rows[active_edge_id] == active_edge[0]
+            active_connections[active_edge_id] = 1
+            tracking_confidence_list[active_edge_id] = tracking_confidence
+            active_neighbors[active_edge_id] = rows[active_edge_id]
+            
+    # active_connections = torch.where(edge_preds >= 0.5,1,0)
+
+    mot_graph.graph_obj.active_edges = active_connections
+    mot_graph.graph_obj.tracking_confidence = tracking_confidence_list
 
 #TrackID = InstanceID
 def assign_track_ids():
