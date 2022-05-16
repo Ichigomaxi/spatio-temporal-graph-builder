@@ -62,9 +62,9 @@ dataset_params:
   
 
 data_splits: # See nuscenes.datasplit()
-  train: ['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']
-  val: ['scene-0103', 'scene-0916']
-  test: []
+  train: #['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']
+  val: ['scene-0916'] #['scene-0103', 'scene-0916']
+  test: #[]
 
 eval_params:
   # Logging / Metrics reporting params

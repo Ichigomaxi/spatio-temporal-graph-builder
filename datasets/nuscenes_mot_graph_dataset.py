@@ -1,3 +1,4 @@
+from ctypes import ArgumentError
 from typing import List, Tuple
 from datasets.nuscenes_mot_graph import NuscenesMotGraph, NuscenesMotGraphAnalyzer
 from datasets.NuscenesDataset import NuscenesDataset
@@ -19,7 +20,7 @@ class NuscenesMOTGraphDataset(object):
                     nuscenes_handle: NuScenes = None,
                     device:str = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         
-        assert mode in NuscenesDataset.ALL_SPLITS
+        assert mode in NuscenesDataset.ALL_SPLITS, "mode not part of official nuscenes splits: {}".format(NuscenesDataset.ALL_SPLITS)
 
         self.dataset_params = dataset_params
         self.mode = mode
@@ -43,49 +44,70 @@ class NuscenesMOTGraphDataset(object):
 
         if self.seqs_to_retrieve:
             # Index the dataset (i.e. assign a pair (scene, starting frame) to each integer from 0 to len(dataset) -1)
-            if dataset_params['load_valid_sequence_sample_list'] is not None:
-                if dataset_params['load_valid_sequence_sample_list'] == True:
-                    print("##########################################################")
-                    print("Starting to load sequence sample list from pickle file")
-                    loading_list_start_time = time.time()
-                    self.seq_frame_ixs = []
+            if dataset_params['load_valid_sequence_sample_list'] == True:
+            
+                print("##########################################################")
+                print("Starting to load sequence sample list from pickle file")
+                loading_list_start_time = time.time()
+                self.seq_frame_ixs = []
+                filepath = None 
+                if ("train" in self.mode):
+                    assert isinstance(dataset_params['sequence_sample_list_train_path'], str), \
+                                        'No string-object was given for train set to \'sequence_sample_list_train_path\'! '
                     filepath_train = dataset_params['sequence_sample_list_train_path']
+                    filepath = filepath_train
+                elif "val" in self.mode:
+                    assert isinstance(dataset_params['sequence_sample_list_val_path'], str), \
+                                        'No string-object was given for val set to \'sequence_sample_list_val_path\'! '
                     filepath_val = dataset_params['sequence_sample_list_val_path']
-                    filepath = None 
-                    if ("train" in self.mode):
-                        filepath = filepath_train
-                    elif "val" in self.mode:
-                        filepath = filepath_val
-                    else:
-                        filepath = filepath_train
-                    with open(filepath, 'rb') as f:
-                        self.seq_frame_ixs = pickle.load(f)
-                    print("Finished Loading ")
-                    loading_list_end_time = time.time()
-                    time_difference = loading_list_end_time - loading_list_start_time
-                    print("Elapsed Loading time: {}".format(time_difference))
-                    print("##########################################################")
-                else: 
-                    self.seq_frame_ixs = self._index_dataset()
+                    filepath = filepath_val
+                elif 'test' in self.mode:
+                    assert isinstance(dataset_params['sequence_sample_list_test_path'], str), \
+                                        'No string-object was given for test set to \'sequence_sample_list_test_path\'! '
+                    filepath_test = dataset_params['sequence_sample_list_test_path']
+                    filepath = filepath_test
+                
+                with open(filepath, 'rb') as f:
+                    self.seq_frame_ixs = pickle.load(f)
+                print("Finished Loading ")
+                loading_list_end_time = time.time()
+                time_difference = loading_list_end_time - loading_list_start_time
+                print("Elapsed Loading time: {}".format(time_difference))
+                print("##########################################################")
             else:
                 self.seq_frame_ixs = self._index_dataset()
 
-    def _get_seqs_to_retrieve_from_splits(self, splits)-> List[dict]:
+    def _get_seqs_to_retrieve_from_splits(self, splits:dict)-> List[dict]:
         """
         Returns list of sequences(nuscenes scene-objects) corresponding to the mode 
         and to the available sequences to the specific nuscenes handle
+        Args:
+        splits: dict that lists train, val, and/or test sequences. 
+                This is useful if only specific scenes should be taken into scope
+                If vanilla nuscenes splits should be used then leave it as None
         """
         seqs_to_retrieve = None
-        if splits is None:
-            
-
+        scene_names = []
+        if splits is not None:
+            # custom split
+            # Get appropiate sequence names depending on mode
+            if 'train' in self.mode:
+                scene_names = splits['train']
+            elif 'val' in self.mode:
+                scene_names = splits['val']
+            elif 'test' in self.mode:
+                scene_names = splits['test']
+        else:
+            # official nuscenes split
             dict_splits_to_scene_names = self.nuscenes_dataset.splits_to_scene_names
             split_name = self.mode
             scene_names = dict_splits_to_scene_names[split_name]
-            sequences_by_name = self.nuscenes_dataset.sequences_by_name
+        
+        # Dict containing all nuscene-scene-tables/dicts reachable by nuscenes_handle
+        sequences_by_name = self.nuscenes_dataset.sequences_by_name
+        # List respective nuscene-scene-tables/dicts corresponding to its split
+        seqs_to_retrieve = [sequences_by_name[scene_name] for scene_name in scene_names]
 
-            seqs_to_retrieve = [sequences_by_name[scene_name] for scene_name in scene_names]
-            
         return seqs_to_retrieve
 
     def _index_dataset(self):

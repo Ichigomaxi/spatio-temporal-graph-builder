@@ -22,7 +22,7 @@ def main(_config, _run):
 
     mot_graph_dataset = NuscenesMOTGraphDataset(dataset_params, 
                                 mode= _config['dataset_mode'],
-                                splits=None,
+                                splits=_config['data_splits'],
                                 nuscenes_handle= dataset.nuscenes_handle)
 
     for i in range(len(mot_graph_dataset)):
