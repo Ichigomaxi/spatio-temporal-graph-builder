@@ -284,7 +284,7 @@ class MOTNeuralSolver(pl.LightningModule):
             
             # Assign Tracks
             
-            assign_track_ids(mot_graph.graph_obj, dataset.nuscenes_handle )
+            # assign_track_ids(mot_graph.graph_obj, dataset.nuscenes_handle )
 
             # Build TrackingBox List for evaluation
             

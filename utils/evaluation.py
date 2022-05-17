@@ -162,7 +162,8 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph):
     num_ambigous_neighbors_per_source_node = comparison_matrix.sum(dim=0)
     is_ambigous_neighbors = num_ambigous_neighbors_per_source_node > 0
 
-    if(is_ambigous_neighbors.any()):
+    if(False):
+    # if(is_ambigous_neighbors.any()):
         comparison_matrix = comparison_matrix.triu()
         ambigous_source_node_local_idx = comparison_matrix.nonzero()
         isnotNan_mask_idx = isnotNan_mask.nonzero()
