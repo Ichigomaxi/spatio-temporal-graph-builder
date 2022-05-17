@@ -108,6 +108,34 @@ def add_line_set_labeled(nodes:torch.Tensor, edge_indices: torch.Tensor,edge_lab
 
     return line_set_sequences
 
+# def build_geometries_input_graph_w_pointcloud(mot_graph:NuscenesMotGraph):
+#     geometry_list = []
+
+#     nodes_3d_coord = mot_graph.graph_obj.x[:,:3]
+#     edge_indices= mot_graph.graph_obj.edge_index
+#     edge_labels= mot_graph.graph_obj.edge_labels
+#     edge_features = mot_graph.graph_obj.edge_attr
+
+#     # Color Points/Nodes
+#     point_sequence = add_pointcloud(nodes_3d_coord,
+#                                     color= None)
+#     geometry_list += point_sequence
+    
+#     assert mot_graph.label_type is not None
+
+#     if mot_graph.label_type == "binary":
+#         edge_type_numbers = edge_features.argmax(dim = 1)
+#         input_lineset = add_line_set_labeled(nodes = nodes_3d_coord,
+#                             edge_indices= edge_indices, 
+#                             edge_labels= edge_type_numbers
+#                             )
+#     geometry_list += input_lineset
+#     # Draw Graph/Edges with Lineset
+#     # Spatial Edges Red Edges
+    
+
+#     return geometry_list
+
 def visualize_input_graph(mot_graph:NuscenesMotGraph):
     geometry_list = []
 
