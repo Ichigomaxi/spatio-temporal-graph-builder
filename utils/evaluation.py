@@ -23,6 +23,8 @@ from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 from utils.misc import load_pickle, save_pickle
 
 from torch.nn import functional
+
+from nuscenes.nuscenes import NuScenes
 # from nuscenes.eval.tracking.data_classes import TrackingConfig
 # from nuscenes.eval.tracking.evaluate import TrackingEval
 
@@ -51,10 +53,24 @@ def compute_nuscenes_3D_mot_metrics(gt_path, out_mot_files_path, seqs, print_res
 
 
 def assign_definitive_connections(mot_graph:NuscenesMotGraph):
+    '''
+    backtracks the neighboring node with the highest confidence to connect with a give node.
+    Idea: iterate in reverse. start backtracking from last frame and continue until reaching the first frame
+    Edges for backtracking are differentiated between incoming(flowing in) edges and outgoing (flowing out) edges.
+    Therefore, we follow the COO convention and the flow-convention (edges are described: source_node to target_node)
+    rows = source_nodes, columns = target_nodes
+
+    Saves variables in graph_object (Graph):
+    mot_graph.graph_obj.active_edges: torch.ByteTensor, shape(num_edges), True if connecting a target_node with corresponding active neighbor  
+    mot_graph.graph_obj.tracking_confidence: torch.LongTensor, shape(num_edges), contains edge_predictions of corresponding active edges
+    mot_graph.graph_obj.active_neighbors: torch.IntTensor, shape(num_edges) , contains the node_index of the corresponding active neighbor  
+
+    Returns: void 
+    '''
 
     def filter_for_past_edges(incoming_edge_idx, current_timeframe:int):
         '''
-        incoming_edge_idx : torch.tensor, shape(num_incoming_edges)
+        incoming_edge_idx : torch.tensor, shape(num_incoming_edges) # 
         current_timeframe: int
         '''
         past_edges = None
@@ -96,9 +112,9 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph):
     edge_preds = mot_graph.graph_obj.edge_preds 
     mot_graph.graph_obj.x
 
-    active_connections = torch.zeros_like(edge_preds)
-    tracking_confidence_list = torch.zeros_like(edge_preds)
-    active_neighbors = torch.zeros_like(edge_preds)
+    active_connections = torch.zeros_like(edge_preds) * float('nan')
+    tracking_confidence_list = torch.zeros_like(edge_preds) *float('nan')
+    active_neighbors = torch.zeros_like(edge_preds) *float('nan')
 
     timeframes = range(1,mot_graph.max_frame_dist) # start at 1 to skip first frame
     # Iterate in reverse to start from the last frame
@@ -116,8 +132,9 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph):
             incoming_edge_idx = filter_for_past_edges(incoming_edge_idx, i)
             # Get edge predictions and provide the active neighbor and its tracking confindence
             incoming_edge_predictions = edge_preds[incoming_edge_idx]
-            probabilities = functional.softmax(incoming_edge_predictions, dim=0)
+            probabilities = functional.log_softmax(incoming_edge_predictions, dim=0)
             local_index = torch.argmax(probabilities, dim = 0)
+            assert local_index == torch.argmax(functional.softmax(incoming_edge_predictions, dim=0 ), dim = 0)
             # look for the global edge index
             global_index = incoming_edge_idx[local_index]
             active_edge_id = global_index
@@ -132,15 +149,66 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph):
             active_connections[active_edge_id] = 1
             tracking_confidence_list[active_edge_id] = tracking_confidence
             active_neighbors[active_edge_id] = rows[active_edge_id]
-            
-    # active_connections = torch.where(edge_preds >= 0.5,1,0)
 
-    mot_graph.graph_obj.active_edges = active_connections
-    mot_graph.graph_obj.tracking_confidence = tracking_confidence_list
+    # Determine if any active source_node has more than 1 active edges assigned to them
+    # check for duplicates in active_neighbors
+    isNan_mask = active_neighbors !=active_neighbors
+    isnotNan_mask = ~isNan_mask
+    local_active_neighbor_list = active_neighbors[isnotNan_mask]
+    comparison_matrix = local_active_neighbor_list.eq(local_active_neighbor_list.unsqueeze(dim=1))
+    comparison_matrix.fill_diagonal_(False)
+    num_ambigous_neighbors_per_source_node = comparison_matrix.sum(dim=0)
+    is_ambigous_neighbors = num_ambigous_neighbors_per_source_node > 0
+
+    if(is_ambigous_neighbors.any()):
+        comparison_matrix = comparison_matrix.triu()
+        ambigous_source_node_local_idx = comparison_matrix.nonzero()
+        isnotNan_mask_idx = isnotNan_mask.nonzero()
+        ambigous_source_node_global_idx = isnotNan_mask_idx[ambigous_source_node_local_idx]
+        # get corresponding source node and its active_edge_idx
+
+        # filter duplicates(active edge candidates)
+        for local_row_index in range(len(local_active_neighbor_list)):
+            row_idx = ambigous_source_node_local_idx[:,0]
+            column_idx = ambigous_source_node_local_idx[:,1]
+            # Check if the current active_node has ambigous connections
+            if local_row_index in row_idx:
+                # Get index of ambigous 
+                local_mask = row_idx == local_row_index
+                ambigous_node_idx = column_idx[local_mask]
+                # Get global node id
+                current_global_edge_id = isnotNan_mask_idx[local_row_index]
+                current_global_source_node_id = active_neighbors[current_global_edge_id] 
+                assert (current_global_source_node_id == active_neighbors[isnotNan_mask_idx[ambigous_node_idx]]).all
+                local_active_neighbor = local_active_neighbor_list[local_row_index]
+                assert current_global_source_node_id == local_active_neighbor
+                # Get all active edges
+                global_ambigous_edge_idx = isnotNan_mask_idx[ambigous_node_idx]
+                all_global_ambigous_edge_idx = torch.cat([current_global_edge_id,global_ambigous_edge_idx])
+                ambigous_active_edges = active_connections[all_global_ambigous_edge_idx]
+                ambigous_tracking_confidence = tracking_confidence_list[all_global_ambigous_edge_idx]
+            
+                # Perform softmax + argmax
+                log_probs = functional.log_softmax(ambigous_tracking_confidence)
+                winning_subsample_id = torch.argmax(log_probs)
+                winning_id_global = all_global_ambigous_edge_idx[winning_subsample_id]
+                
+                # Set remaining active edge-candidates to inactive -> False
+                lossing_idx_global = all_global_ambigous_edge_idx[all_global_ambigous_edge_idx != winning_id_global]
+                active_connections[lossing_idx_global] = float('nan') 
+                tracking_confidence_list[lossing_idx_global] = float('nan')
+
+    mot_graph.graph_obj.active_edges = active_connections >=1 # Make into torch.ByteTensor
+    mot_graph.graph_obj.tracking_confidence = tracking_confidence_list # torch.LongTensor
+    mot_graph.graph_obj.active_neighbors = active_neighbors # torch.IntTensor
 
 #TrackID = InstanceID
-def assign_track_ids():
-    pass
+def assign_track_ids(graph_object:NuscenesMotGraph, nuscenes_handle:NuScenes):
+    '''
+    assign track Ids if active_edges have been determined
+    '''
+    graph_object
+    
 
 # def compute_mot_metrics(gt_path, out_mot_files_path, seqs, print_results = True):
 #     """

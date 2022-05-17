@@ -278,11 +278,14 @@ class MOTNeuralSolver(pl.LightningModule):
             # edge_preds = torch.sigmoid(logits)
             edge_preds = self.inference_step(mot_graph.graph_obj)
             mot_graph.graph_obj.edge_preds = edge_preds
-            # Compute connections
+
+            # Compute active connections
             assign_definitive_connections(mot_graph)
-            # mot_graph.graph_obj.active_edges = active_edges
+            
             # Assign Tracks
-            # assign_track_ids(mot_graph)
+            
+            assign_track_ids(mot_graph.graph_obj, dataset.nuscenes_handle )
+
             # Build TrackingBox List for evaluation
             
 
