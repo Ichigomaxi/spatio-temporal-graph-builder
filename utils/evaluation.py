@@ -132,9 +132,11 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph):
             incoming_edge_idx = filter_for_past_edges(incoming_edge_idx, i)
             # Get edge predictions and provide the active neighbor and its tracking confindence
             incoming_edge_predictions = edge_preds[incoming_edge_idx]
-            probabilities = functional.log_softmax(incoming_edge_predictions, dim=0)
-            local_index = torch.argmax(probabilities, dim = 0)
+            probabilities = functional.softmax(incoming_edge_predictions, dim=0 )
+            log_probabilities = functional.log_softmax(incoming_edge_predictions, dim=0)
+            local_index = torch.argmax(log_probabilities, dim = 0)
             assert local_index == torch.argmax(functional.softmax(incoming_edge_predictions, dim=0 ), dim = 0)
+            
             # look for the global edge index
             global_index = incoming_edge_idx[local_index]
             active_edge_id = global_index
@@ -184,13 +186,15 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph):
                 assert current_global_source_node_id == local_active_neighbor
                 # Get all active edges
                 global_ambigous_edge_idx = isnotNan_mask_idx[ambigous_node_idx]
-                all_global_ambigous_edge_idx = torch.cat([current_global_edge_id,global_ambigous_edge_idx])
+                # Combine current and other ambigous edge_idx
+                all_global_ambigous_edge_idx = torch.cat([current_global_edge_id.unsqueeze(dim=1),global_ambigous_edge_idx], dim=0)
+                all_global_ambigous_edge_idx = all_global_ambigous_edge_idx.squeeze_()
                 ambigous_active_edges = active_connections[all_global_ambigous_edge_idx]
                 ambigous_tracking_confidence = tracking_confidence_list[all_global_ambigous_edge_idx]
             
                 # Perform softmax + argmax
-                log_probs = functional.log_softmax(ambigous_tracking_confidence)
-                winning_subsample_id = torch.argmax(log_probs)
+                log_probs = functional.log_softmax(ambigous_tracking_confidence, dim = 0)
+                winning_subsample_id = torch.argmax(log_probs, dim = 0)
                 winning_id_global = all_global_ambigous_edge_idx[winning_subsample_id]
                 
                 # Set remaining active edge-candidates to inactive -> False
