@@ -55,3 +55,9 @@ conda list output:
 sacred                    0.8.3                    pypi_0    pypi
 pip list output:
 sacred                  0.8.3
+
+7) install motmetrics
+https://github.com/cheind/py-motmetrics
+https://pypi.org/project/motmetrics/
+pip install motmetrics
+motmetrics                1.2.5                    pypi_0    pypi

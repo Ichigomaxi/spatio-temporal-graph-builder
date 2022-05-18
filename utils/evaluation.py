@@ -3,6 +3,7 @@ Taken from https://github.com/dvl-tum/mot_neural_solver
 Check out the corresponding Paper https://arxiv.org/abs/1912.07515
 This is serves as inspiration for our own code
 '''
+from typing import Any, Dict, List
 import numpy as np
 import pandas as pd
 
@@ -17,29 +18,26 @@ from torch_scatter import scatter_add
 from pytorch_lightning import Callback
 
 import re
+
+from zmq import device
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
+from datasets.mot_graph import Graph
 
 from utils.misc import load_pickle, save_pickle
 
 from torch.nn import functional
 
 from nuscenes.nuscenes import NuScenes
-# from nuscenes.eval.tracking.data_classes import TrackingConfig
-# from nuscenes.eval.tracking.evaluate import TrackingEval
+from nuscenes.nuscenes import Box
+from nuscenes.eval.tracking.data_classes import TrackingConfig,TrackingBox
+from nuscenes.eval.tracking.evaluate import TrackingEval
+from datasets.nuscenes.reporting import add_results_to_submit
+from datasets.nuscenes.classes import name_from_id
 
 ###########################################################################
 # MOT Metrics
 ###########################################################################
-
-# Formatting for MOT Metrics reporting
-
-# mh = mm.metrics.create()
-# MOT_METRICS_FORMATERS = mh.formatters
-# MOT_METRICS_NAMEMAP = mm.io.motchallenge_metric_names
-# MOT_METRICS_NAMEMAP.update({'norm_' + key: 'norm_' + val for key, val in MOT_METRICS_NAMEMAP.items()})
-# MOT_METRICS_FORMATERS.update({'norm_' + key: val for key, val in MOT_METRICS_FORMATERS.items()})
-# MOT_METRICS_FORMATERS.update({'constr_sr': MOT_METRICS_FORMATERS['mota']})
 
 def compute_nuscenes_3D_mot_metrics(gt_path, out_mot_files_path, seqs, print_results = True):
     """
@@ -51,6 +49,17 @@ def compute_nuscenes_3D_mot_metrics(gt_path, out_mot_files_path, seqs, print_res
     summary = None 
     return summary
 
+def get_node_indices_from_timeframe_i(timeframe_numbers:torch.Tensor, timeframe:int, as_tuple:bool= False)-> torch.Tensor:
+    '''
+    Returns node indices of a given timeframe.
+    Args:
+    timeframe_numbers: torch.Tensor shape(num_nodes,1)
+    timeframe: int, from 0 to max_number_of_frames_per_graph
+    as_tuple: Bool, if True, indices are returned as tuple, see doc of torch.nonzero() for details.
+    '''
+    nodes_from_frame_i_mask = timeframe_numbers == timeframe
+    node_idx_from_frame_i = torch.nonzero(nodes_from_frame_i_mask, as_tuple=as_tuple)
+    return node_idx_from_frame_i
 
 def assign_definitive_connections(mot_graph:NuscenesMotGraph):
     '''
@@ -208,11 +217,177 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph):
     mot_graph.graph_obj.active_neighbors = active_neighbors # torch.IntTensor
 
 #TrackID = InstanceID
-def assign_track_ids(graph_object:NuscenesMotGraph, nuscenes_handle:NuScenes):
+def assign_track_ids(graph_object:Graph, frames_per_graph:int, nuscenes_handle:NuScenes):
     '''
     assign track Ids if active_edges have been determined
+    
+    Returns:
+    tracking_IDs : torch tensor, shape(num_nodes)
+    tracking_ID_dict : Dict{} contains mapping from custom tracking Ids to the same number again.
+                            len(Dict.keys) = num_tracking_IDs
+                            later on it should be used to match with the official_tracking Ids (Instance Ids) 
     '''
-    graph_object
+    def init_new_tracks(selected_node_idx, tracking_IDs:torch.Tensor, tracking_ID_dict: Dict[int, Any]):
+        '''
+        give new track Ids to selected Nodes
+        '''
+        # Determine helping variables
+        device = graph_object.device()
+        common_tracking_dtype = tracking_IDs.dtype
+        # Generate new tracking Ids depending on number of untracked nodes
+        num_selected_nodes = selected_node_idx.shape[0]
+        last_id = max([key_tracking_id for key_tracking_id in tracking_ID_dict])
+        nonNan_mask = ~(tracking_IDs!=tracking_IDs)
+        assert last_id == torch.max(tracking_IDs[nonNan_mask])
+        new_start = last_id + 1
+        new_tracking_IDs = torch.arange(start= new_start, end= new_start + num_selected_nodes,
+                                step=1, dtype= common_tracking_dtype, device=device)
+        # assign new tracking ids to untracked nodes
+        tracking_IDs[selected_node_idx] = new_tracking_IDs
+        # Update dictionary
+        update_tracking_dict(new_tracking_IDs, tracking_ID_dict)
+
+    def update_tracking_dict(new_tracking_ids, tracking_ID_dict):
+        tracking_ID_dict.update({track_id : track_id for track_id in new_tracking_ids})
+
+    device = graph_object.device()
+
+    tracking_IDs:torch.Tensor = torch.zeros(graph_object.x.shape[0]).to(device)
+    tracking_IDs =  tracking_IDs * float('nan')
+    common_tracking_dtype = tracking_IDs.dtype
+
+    tracking_confidence_by_node_id:torch.Tensor = torch.zeros(graph_object.x.shape[0]).to(device)
+
+    tracking_ID_dict: Dict[int, Any]= {}
+
+    edge_indices = graph_object.edge_index
+
+    # Go forward frame by frame, start at first frame and stop at last frame 
+    for timeframe in range(frames_per_graph):
+        node_idx_from_frame_i = get_node_indices_from_timeframe_i(graph_object.timeframe_number, timeframe=timeframe, as_tuple=True)
+        node_idx_from_frame_i = node_idx_from_frame_i[0] # second colum is just zeros
+
+        # If first frame Assing new tracking Ids
+        if timeframe == 0:
+            num_initial_boxes = node_idx_from_frame_i.shape[0]
+            initial_tracking_IDs = torch.arange(start=0, end= num_initial_boxes, step=1, dtype= common_tracking_dtype, device=device)
+            tracking_IDs[node_idx_from_frame_i] = initial_tracking_IDs
+
+            update_tracking_dict(initial_tracking_IDs, tracking_ID_dict)
+
+        else:
+            # check for active edges
+            # Get active edge for edge selected node
+            # Get all incoming edges 
+            untracked_node_idx = []
+            for target_node_id in node_idx_from_frame_i:
+                
+                rows, columns = edge_indices[0],edge_indices[1] # COO-format
+                edge_mask:torch.Tensor = torch.eq(columns, target_node_id)
+                incoming_edge_idx_past_and_future = edge_mask.nonzero().squeeze()
+                current_active_edges = graph_object.active_edges[incoming_edge_idx_past_and_future]
+                # check if active edge available
+                if current_active_edges.any():
+                    assert current_active_edges.sum(dim=0) == 1
+                    # active_edge_id_local = torch.argmax( torch.tensor(current_active_edges,dtype=torch.float32) )
+                    active_edge_id = incoming_edge_idx_past_and_future[current_active_edges]
+                    # active_edge_id = incoming_edge_idx_past_and_future[active_edge_id_local]
+                    source_node_id =  rows[active_edge_id]
+                    
+                    assert graph_object.active_neighbors[active_edge_id] == source_node_id
+                    # check if source node has an assigned track id
+                    assert tracking_IDs[source_node_id] != float('nan'), "Source node was not given a track ID !!! tracking cannot be performed, either invalid active edge"
+                    # adopt track id
+                    tracking_IDs[target_node_id] = tracking_IDs[source_node_id]
+                    tracking_confidence_by_node_id[target_node_id] = graph_object.tracking_confidence[active_edge_id]
+                else: # add target_node_id to list of untracked nodes
+                    untracked_node_idx.append(target_node_id)
+            
+            # Assign new track Ids to untracked nodes
+            # check if list contains elements
+            if untracked_node_idx:
+                untracked_node_idx = torch.stack(untracked_node_idx, dim=0)
+                init_new_tracks( untracked_node_idx, tracking_IDs, tracking_ID_dict)
+                # tracking confidence of newly tracked objects is implicitly 0.0
+
+
+    # check if all nodes have been assigned a tracking id
+    assert torch.isnan(tracking_IDs).all() == False, "Not all nodes have been assigned a tracking Id"
+
+    return tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id
+    
+def build_tracking_boxes(submission: Dict[str, Dict[str, Any]], scene_token, sample_token, mot_graph:NuscenesMotGraph):
+    """
+    Idea Mirror sample_annotation-table 
+    
+    sample_result {
+        "sample_token":   <str>         -- Foreign key. Identifies the sample/keyframe for which objects are detected.
+        "translation":    <float> [3]   -- Estimated bounding box location in meters in the global frame: center_x, center_y, center_z.
+        "size":           <float> [3]   -- Estimated bounding box size in meters: width, length, height.
+        "rotation":       <float> [4]   -- Estimated bounding box orientation as quaternion in the global frame: w, x, y, z.
+        "velocity":       <float> [2]   -- Estimated bounding box velocity in m/s in the global frame: vx, vy.
+        "tracking_id":    <str>         -- Unique object id that is used to identify an object track across samples.
+        "tracking_name":  <str>         -- The predicted class for this sample_result, e.g. car, pedestrian.
+                                        Note that the tracking_name cannot change throughout a track.
+        "tracking_score": <float>       -- Object prediction score between 0 and 1 for the class identified by tracking_name.
+                                        We average over frame level scores to compute the track level score.
+                                        The score is used to determine positive and negative tracks via thresholding.
+    }
+    """
+    trackingBoxes :List[TrackingBox] = []
+    for node_id in range(len(mot_graph.graph_dataframe["boxes_list_all"])):
+        box:Box = mot_graph.graph_dataframe["boxes_list_all"][node_id]
+        translation = box.center
+        size = box.wlh
+        rotation = box.orientation 
+        velocity = box.velocity if not np.isnan(box.velocity).any() else [1.0, 1.0]
+        tracking_id = mot_graph.graph_obj.tracking_IDs[node_id]
+        class_id:torch.Tensor = mot_graph.graph_dataframe["class_ids"][node_id]
+        class_id = class_id.tolist()[0]
+        tracking_name = name_from_id(class_id= class_id) # name_from_id(instance.class_id)
+        tracking_score  = mot_graph.graph_obj.tracking_confidence_by_node_id # confidence 
+
+        tracking_box = TrackingBox(sample_token= sample_token,
+                                        translation= translation, size=size, 
+                                        rotation= rotation, 
+                                        velocity= velocity, 
+                                        tracking_id= tracking_id,
+                                        tracking_name= tracking_name,
+                                        tracking_score= tracking_score)
+        trackingBoxes.append(tracking_box)
+    
+    add_results_to_submit(submission, frame_token = sample_token,
+                    predicted_instances = trackingBoxes)
+        
+
+
+def prepare_for_submission(submission: Dict[str, Dict[str, Any]]):
+    '''
+     submission {
+        "meta": {
+            "use_camera":   <bool>  -- Whether this submission uses camera data as an input.
+            "use_lidar":    <bool>  -- Whether this submission uses lidar data as an input.
+            "use_radar":    <bool>  -- Whether this submission uses radar data as an input.
+            "use_map":      <bool>  -- Whether this submission uses map data as an input.
+            "use_external": <bool>  -- Whether this submission uses external data as an input.
+        },
+        "results": {
+            sample_token <str>: List[sample_result] -- Maps each sample_token to a list of sample_results.
+        }
+        }
+    '''
+    submission = {
+        "meta": {
+            "use_camera":  False,
+            "use_lidar":   True,
+            "use_radar":   False,
+            "use_map":     False,
+            "use_external": False
+            },
+        "results": {
+           }
+        }
+    return submission
     
 
 # def compute_mot_metrics(gt_path, out_mot_files_path, seqs, print_results = True):
@@ -326,231 +501,3 @@ def assign_track_ids(graph_object:NuscenesMotGraph, nuscenes_handle:NuScenes):
 #                     metrics_log ={f'{metric}/val': met_dict['OVERALL'] for metric, met_dict in mot_metrics_summary.items()
 #                                   if metric in metric_names}
 #                     pl_module.logger.log_metrics(metrics_log, step = trainer.global_step)
-
-
-###########################################################################
-# Computation of MOT metrics with cross-validation
-###########################################################################
-
-class CrossValidationEvaluator:
-    def __init__(self, path_to_search, run_id):
-        self.path_to_search = path_to_search
-        self.run_id = run_id
-
-
-    def _extract_split_num(self, dir_name):
-        split = dir_name.split('split_')[1].split('_')[0]
-        return int(split)
-
-    def _get_per_split_paths(self):
-        """
-        Given a path (path_to_search) and a a string (experiment_name), it will search for all files inside path_to_search that
-        contain the string experiment_name and return a list with one name per split. If there is more than one file that
-        contains tag_name and a given split, it will return the most recent one.
-        """
-
-        pattern = '(\d\d-\d\d_\d\d:\d\d_)?' + self.run_id + '_split_[0-9]' # Optional date + tag_name + split
-        dir_candidates = [dir_name for dir_name in os.listdir(self.path_to_search) if re.search(pattern, dir_name)]
-
-        # First, get all the different available paths per split
-        paths_per_split = {}
-        for dir_path in dir_candidates:
-            split_num = self._extract_split_num(dir_path)
-            if split_num != -1:
-                if split_num not in paths_per_split:
-                    paths_per_split[split_num] = [dir_path]
-                else:
-                    paths_per_split[split_num].append(dir_path)
-
-        # In case there's more than one for a given split, choose the one that was created later
-        return [max(dir_list) for dir_list in paths_per_split.values()]
-
-    def get_metrics_data(self):
-        """
-        Get a list with Ids of experiments whose data we want to retrieve. It inferes them from tag_name. It searches
-        output files that contain it and are as recent as possible and from their name, it gets their Experiment Id
-        """
-
-        # Get paths from which we will get experiment Ids:
-        per_split_metrics_dir =  self._get_per_split_paths()
-
-        print(f"Retrieving metrics from experiments with Run IDs: {sorted(per_split_metrics_dir)}")
-
-        # Load metrics information from every split at every iteration number
-        metric_dfs = []
-        oracle_metric_dfs = []
-        for dir in per_split_metrics_dir:
-            per_epoch_files = os.listdir(osp.join(self.path_to_search, dir, 'mot_metrics'))
-            for file in per_epoch_files:
-                split_iter_metrics = load_pickle(osp.join(self.path_to_search, dir, 'mot_metrics', file))
-                split_iter_metrics = pd.DataFrame(split_iter_metrics)
-                split_iter_metrics = split_iter_metrics.drop('OVERALL').reset_index().rename(columns=  {'index': 'scene'})
-
-                if file.lower().startswith('oracle'):
-                    oracle_metric_dfs.append(split_iter_metrics)
-
-                else:
-                    metric_dfs.append(split_iter_metrics)
-
-        # Concatenate all DataFrames into a single one containing metrics from all sequences at every iteration
-        overall_metrics_df = pd.concat(metric_dfs)
-        if oracle_metric_dfs:
-            oracle_metric_dfs = pd.concat(oracle_metric_dfs)
-
-        return overall_metrics_df, oracle_metric_dfs
-
-    def _compute_per_epoch_MOTA_and_prec(self, metrics_df):
-        """
-        Computes overall MOT metrics over scenes from different training splits
-        """
-        # Group metrics by scene and keep record on how many scenes where evaluated at each iteration
-        scenes_per_iter = metrics_df.reset_index().groupby('epoch_num')['scene'].agg(lambda x: tuple(x.unique()))
-        per_epoch_overall_vals = metrics_df.groupby(['epoch_num']).sum()
-        per_epoch_overall_vals = per_epoch_overall_vals.join(scenes_per_iter)
-        all_scenes = per_epoch_overall_vals['scene'].iloc[0]
-        per_epoch_overall_vals['has_all_scenes'] = per_epoch_overall_vals['scene'].apply(lambda x: set(all_scenes).issubset(x))
-
-        if 'constr_sr' in per_epoch_overall_vals and per_epoch_overall_vals ['constr_sr'].isnull().sum()  == 0:
-            per_epoch_overall_vals['constr_sr'] = metrics_df.groupby(['epoch_num'])['constr_sr'].mean()
-
-        # Compute MOTA and MOTA Log
-        per_epoch_overall_vals['mota'] = 100*(1 - (per_epoch_overall_vals['num_misses'] + per_epoch_overall_vals['num_false_positives']+
-                                                  per_epoch_overall_vals['num_switches']) / per_epoch_overall_vals['num_objects'])
-        per_epoch_overall_vals['MOTA Log'] = 100*(1 - (per_epoch_overall_vals['num_misses'] + per_epoch_overall_vals['num_false_positives']+
-                                                  np.log10(per_epoch_overall_vals['num_switches'])) / per_epoch_overall_vals['num_objects'])
-
-        # Compute ID metrics
-        #per_epoch_overall_vals['idp'] = 100* per_epoch_overall_vals['idtp'] / (per_epoch_overall_vals['idtp'] + per_epoch_overall_vals['idfp'])
-        per_epoch_overall_vals['idr'] = 100* per_epoch_overall_vals['idtp'] / (per_epoch_overall_vals['idtp'] + per_epoch_overall_vals['idfn'])
-        per_epoch_overall_vals['idf1'] = 100*2*per_epoch_overall_vals['idtp'] / (per_epoch_overall_vals['num_predictions'] + per_epoch_overall_vals['num_objects'])
-
-        return per_epoch_overall_vals
-
-    def _choose_best_epoch_results(self, per_epoch_metrics, best_method_metric):
-        """
-        Chooses overall (best) results, based on the value of the metric (column) 'best_method_criteria'
-        """
-        valid_indices = per_epoch_metrics[per_epoch_metrics['has_all_scenes']].index
-        best_iter = max(valid_indices, key=lambda x: per_epoch_metrics.loc[x][best_method_metric])
-        best_row = per_epoch_metrics.loc[best_iter]
-        best_metric_val = per_epoch_metrics.loc[best_iter][best_method_metric]
-
-        return best_iter, best_row, best_metric_val
-
-
-    def evaluate(self, cols_to_norm, best_method_metric):
-        per_epoch_metrics, oracle_metrics=  self.get_metrics_data()
-        per_epoch_metrics = self._compute_per_epoch_MOTA_and_prec(per_epoch_metrics)
-
-        if isinstance(oracle_metrics, pd.DataFrame):
-            oracle_metrics = self._compute_per_epoch_MOTA_and_prec(oracle_metrics)
-
-        for col in cols_to_norm:
-            per_epoch_metrics['norm_' + col] = 100 * per_epoch_metrics[col] / oracle_metrics[col].iloc[0]
-
-        best_iter, best_row, best_metric_val  = self._choose_best_epoch_results(per_epoch_metrics, best_method_metric)
-
-        return per_epoch_metrics, best_iter, best_row, best_metric_val
-
-
-###########################################################################
-# Computation of other metrics to monitor training
-###########################################################################
-
-def fast_compute_class_metric(test_preds, test_sols, class_metrics = ('accuracy', 'recall', 'precision')):
-    """
-    Computes manually (i.e. without sklearn functions) accuracy, recall and predicision.
-
-    Args:
-        test_preds: numpy array/ torch tensor of size N with discrete output vals
-        test_sols: numpy array/torch tensor of size N with binary labels
-        class_metrics: tuple with a subset of values from ('accuracy', 'recall', 'precision') indicating which
-        metrics to report
-
-    Returns:
-        dictionary with values of accuracy, recall and precision
-    """
-    with torch.no_grad():
-
-        TP = ((test_sols == 1) & (test_preds == 1)).sum().float()
-        FP = ((test_sols == 0) & (test_preds == 1)).sum().float()
-        TN = ((test_sols == 0) & (test_preds == 0)).sum().float()
-        FN = ((test_sols == 1) & (test_preds == 0)).sum().float()
-
-        accuracy = (TP + TN) / (TP + FP + TN + FN)
-        recall = TP / (TP + FN) if TP + FN > 0 else torch.tensor(0)
-        precision = TP / (TP + FP) if TP + FP > 0 else torch.tensor(0)
-
-    class_metrics_dict =  {'accuracy': accuracy.item(), 'recall': recall.item(), 'precision': precision.item()}
-    class_metrics_dict = {met_name: class_metrics_dict[met_name] for met_name in class_metrics}
-
-    return class_metrics_dict
-
-def compute_constr_satisfaction_rate(graph_obj, edges_out, undirected_edges = True, return_flow_vals = False):
-    """
-    Determines the proportion of Flow Conservation inequalities that are satisfied.
-    For each node, the sum of incoming (resp. outgoing) edge values must be less or equal than 1.
-
-    Args:
-        graph_obj: 'Graph' object
-        edges_out: BINARIZED output values for edges (1 if active, 0 if not active)
-        undirected_edges: determines whether each edge in graph_obj.edge_index appears in both directions (i.e. (i, j)
-        and (j, i) are both present (undirected_edges =True), or only (i, j), with  i<j (undirected_edges=False)
-        return_flow_vals: determines whether the sum of incoming /outglong flow for each node must be returned
-
-    Returns:
-        constr_sat_rate: float between 0 and 1 indicating the proprtion of inequalities that are satisfied
-
-    """
-    # Get tensors indicataing which nodes have incoming and outgoing flows (e.g. nodes in first frame have no in. flow)
-    edge_ixs = graph_obj.edge_index
-    if undirected_edges:
-        sorted, _ = edge_ixs.t().sort(dim = 1)
-        sorted = sorted.t()
-        div_factor = 2. # Each edge is predicted twice, hence, we divide by 2
-    else:
-        sorted = edge_ixs # Edges (i.e. node pairs) are already sorted
-        div_factor = 1.  # Each edge is predicted once, hence, hence we divide by 1.
-
-    # Compute incoming and outgoing flows for each node
-    flow_out = scatter_add(edges_out, sorted[0],dim_size=graph_obj.num_nodes) / div_factor
-    flow_in = scatter_add(edges_out, sorted[1], dim_size=graph_obj.num_nodes) / div_factor
-
-
-    # Determine how many inequalitites are violated
-    violated_flow_out = (flow_out > 1).sum()
-    violated_flow_in = (flow_in > 1).sum()
-
-    # Compute the final constraint satisfaction rate
-    violated_inequalities = (violated_flow_in + violated_flow_out).float()
-    flow_out_constr, flow_in_constr= sorted[0].unique(), sorted[1].unique()
-    num_constraints = len(flow_out_constr) + len(flow_in_constr)
-    constr_sat_rate = 1 - violated_inequalities / num_constraints
-    if not return_flow_vals:
-        return constr_sat_rate.item()
-
-    else:
-        return constr_sat_rate.item(), flow_in, flow_out
-
-def compute_perform_metrics(graph_out, graph_obj):
-    """
-    Computes both classification metrics and constraint satisfaction rate
-    Args:
-        graph_out: output of MPN, dict with key 'classified' edges, and val a list torch.Tensor of unnormalized loggits for
-        every edge, at every messagepassing step.
-        graph_obj: Graph Object
-
-    Returns:
-        dictionary with metrics summary
-    """
-
-    edges_out = graph_out['classified_edges'][-1]
-    edges_out = (edges_out.view(-1) > 0).float()
-
-    # Compute Classification Metrics
-    class_metrics = fast_compute_class_metric(edges_out, graph_obj.edge_labels)
-
-    # Compute and store the Constr Satisf. Rate
-    class_metrics['constr_sr'] = compute_constr_satisfaction_rate(graph_obj, edges_out=edges_out)
-
-    return class_metrics

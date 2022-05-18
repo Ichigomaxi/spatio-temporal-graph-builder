@@ -4,7 +4,7 @@ Check out the corresponding Paper https://arxiv.org/abs/2104.14682
 This is serves as inspiration for our own code
 '''
 import os
-import ujson as json
+import json as json
 import time
 from typing import IO, Any, Dict, Iterable
 
@@ -54,7 +54,7 @@ def build_results_dict(instance: TrackingBox, frame_token: str) -> Dict[str, Any
 
 
 def add_results_to_submit(submission: Dict[str, Dict[str, Any]], frame_token: str,
-                      predicted_instances: Iterable[Box]) -> None:
+                      predicted_instances: Iterable[TrackingBox]) -> None:
     assert frame_token not in submission["results"], submission["results"][frame_token]
     submission["results"][frame_token] = []
 

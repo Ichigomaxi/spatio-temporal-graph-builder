@@ -7,37 +7,29 @@ import os
 import os.path as osp
 from pickletools import read_uint1
 from typing import Dict
-from cv2 import log
-from numpy import append
 
 import pandas as pd
-
-from torch_geometric.data import DataLoader
-
-import torch
-
-from torch import optim as optim_module
-from torch.optim import lr_scheduler as lr_sched_module
-from torch.nn import functional as F
-
 import pytorch_lightning as pl
-from datasets.NuscenesDataset import NuscenesDataset
-# from datasets.nuscenes.reporting import save_to_json_file
-
-from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
+from tensorboard import summary
+import torch
+from cv2 import log
+from datasets.nuscenes.reporting import save_to_json_file
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
-from utils.evaluation import assign_track_ids
-
+from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
+from datasets.NuscenesDataset import NuscenesDataset
 from model.mpn import MOTMPNet
-from utils.path_cfg import OUTPUT_PATH
-
-from nuscenes.eval.tracking.data_classes import TrackingBox
+from torch import optim as optim_module
+from torch.nn import functional as F
+from torch.optim import lr_scheduler as lr_sched_module
+from torch_geometric.data import DataLoader
 from tracker.mpn_tracker import MPNTracker, NuscenesMPNTracker
+from utils.evaluation import (assign_definitive_connections, assign_track_ids,
+                              build_tracking_boxes, prepare_for_submission)
 from utils.misc import save_pickle
+from utils.path_cfg import OUTPUT_PATH
+from visualization.visualize_graph import (visualize_eval_graph,
+                                           visualize_geometry_list)
 
-from utils.evaluation import assign_definitive_connections
-
-from visualization.visualize_graph import visualize_eval_graph, visualize_geometry_list
 
 class MOTNeuralSolver(pl.LightningModule):
     """
@@ -283,16 +275,23 @@ class MOTNeuralSolver(pl.LightningModule):
             assign_definitive_connections(mot_graph)
             
             # Assign Tracks
-            
-            # assign_track_ids(mot_graph.graph_obj, dataset.nuscenes_handle )
+            tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id = assign_track_ids(mot_graph.graph_obj, 
+                        frames_per_graph = mot_graph.max_frame_dist, 
+                        nuscenes_handle = dataset.nuscenes_handle)
+            mot_graph.graph_obj.tracking_IDs = tracking_IDs
+            mot_graph.graph_obj.tracking_confidence_by_node_id = tracking_confidence_by_node_id
 
+            # Prepare submission dict
+            summary = {}
+            summary = prepare_for_submission(summary)
             # Build TrackingBox List for evaluation
-            
-
+            build_tracking_boxes(summary,scene_token = seq_name,
+                            sample_token = start_frame, mot_graph = mot_graph)
             
             if(self.hparams['eval_params']['visualize_graph']):
                 geometry_list = visualize_eval_graph(mot_graph)
                 visualize_geometry_list(geometry_list)
+            
             inferred_mot_graphs.append(mot_graph)
         # save objects for visualization
         if(self.hparams['eval_params']['save_graphs']):

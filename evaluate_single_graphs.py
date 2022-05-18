@@ -21,6 +21,7 @@ from utils.evaluation import compute_nuscenes_3D_mot_metrics
 # from nuscenes.eval.common.config import config_factory
 # from nuscenes.eval.tracking.evaluate import TrackingEval
 
+
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 
 # Pytorch Lightning Callback For Trainig 
@@ -94,6 +95,8 @@ def main(_config, _run):
                         test_dataset, 
                         use_gt = False, 
                         verbose = True)
+
+    
     # trainer.test(model=model, 
     #                 dataloaders=test_loader)
 

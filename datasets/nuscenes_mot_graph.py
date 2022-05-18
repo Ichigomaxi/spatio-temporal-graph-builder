@@ -14,7 +14,7 @@ from matplotlib.pyplot import box
 from sklearn.utils import deprecated
 from torch_geometric.transforms.to_undirected import ToUndirected
 from utility import filter_boxes, get_box_centers, is_same_instance
-from utils.nuscenes_helper_functions import is_valid_box, is_valid_box_torch
+from utils.nuscenes_helper_functions import is_valid_box, is_valid_box_torch, determine_class_id
 # For dummy objects
 from datasets.mot_graph import Graph
 from pyquaternion import Quaternion
@@ -185,6 +185,14 @@ class NuscenesMotGraph(object):
 
         graph_dataframe["timeframes_all"] = t_frame_number
         
+        # Add object class according to tracking own classes 
+        class_ids =  t_frame_number = torch.zeros((t_centers_list.shape[0],1), dtype=torch.int8).to(self.device)
+        for i,box in enumerate(graph_dataframe["boxes_list_all"]):
+            class_id = determine_class_id(box.name) 
+            class_ids [i] = class_id
+        graph_dataframe["class_ids"] = class_ids
+        assert (graph_dataframe["class_ids"]!=0).all(), "some nodes were not assigned a suitable class id"
+
         return graph_dataframe
 
 
@@ -492,12 +500,16 @@ class NuscenesMotGraph(object):
 
         # Add information to graph if it contains dummy Objects
         bool_contains_dummies = self._contains_dummy_objects()   
+
+        # Add temporal-data for each node. Important for evaluation puposes
+        t_frame_number = self.graph_dataframe["timeframes_all"]
         
         # Build Data-graph object for pytorch model
         self.graph_obj = Graph(x = t_node_features,
                                edge_attr = t_edge_feats,
                                edge_index = t_edge_ixs,
                                temporal_edges_mask = t_temporal_edge_mask,
+                               timeframe_number = t_frame_number,
                                contains_dummies = bool_contains_dummies          
                                )
         # self.graph_obj.temporal_edges_mask = t_temporal_edge_mask

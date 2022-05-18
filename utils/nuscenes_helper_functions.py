@@ -2,6 +2,7 @@ from typing import List
 from nuscenes.nuscenes import NuScenes
 import numpy as np
 import torch
+from datasets.nuscenes.classes import ALL_NUSCENES_CLASS_NAMES, id_from_name
 
 def get_all_samples_2_list(nusc:NuScenes, scene_token:str) -> List[str]:
     # init List
@@ -102,3 +103,11 @@ def is_valid_box_torch(box , center:torch.Tensor,spatial_shift_timeframes:int, d
         offset += spatial_shift_timeframes
     
     return False
+
+def determine_class_id(box_name:str):
+    class_id = None
+    for name in ALL_NUSCENES_CLASS_NAMES:
+        if name in box_name:
+            class_id = id_from_name(name)
+            return class_id
+    assert False, "Given Box_name does not contain a suitable class for the tracking challenge!!!!"
