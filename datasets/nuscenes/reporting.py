@@ -4,63 +4,63 @@ Check out the corresponding Paper https://arxiv.org/abs/2104.14682
 This is serves as inspiration for our own code
 '''
 import os
-import json as json
+import ujson as json
 import time
-from typing import IO, Any, Dict, Iterable
+from typing import IO, Any, Dict, Iterable, List
 
 import numpy as np
 from pyquaternion import Quaternion
 
 # from objects.fused_instance import FusedInstance
-from nuscenes.nuscenes import Box
-from nuscenes.eval.tracking.data_classes import TrackingBox
 
 from datasets.nuscenes.classes import name_from_id
 # from transform.nuscenes import convert_kitti_bbox_coordinates_to_nu
 
+'''
+    FROM: https://www.nuscenes.org/tracking?externalData=all&mapData=all&modalities=Any
+    We define a standardized tracking result format that serves as an input to the evaluation code.
+    Results are evaluated for each 2Hz keyframe, also known as sample.
+    The tracking results for a particular evaluation set (train/val/test) are 
+        stored in a single JSON file. For the train and val sets the evaluation can be 
+        performed by the user on their local machine. 
+    For the test set the user needs to zip the single JSON result file and submit it to 
+        the official evaluation server (see above).
+    The JSON file includes meta data meta on the type of inputs used for this method.
+    Furthermore it includes a dictionary results that maps each sample_token to 
+        a list of sample_result entries.
+    Each sample_token from the current evaluation set must be included in results, although the list of predictions
+        may be empty if no object is tracked.
+'''
+def build_results_dict(frame_token: str,
+                            translation: List[float],
+                            size : List[float],
+                            rotation: List[float],
+                            velocity : List[float],
+                            tracking_id : str,
+                            tracking_name : str,
+                            tracking_score : float
+                            ) -> Dict[str, Any]:
 
-def build_results_dict(instance: TrackingBox, frame_token: str) -> Dict[str, Any]:
-    # BEFORE #######################################
-    # assert instance.report_mot
-    # bbox3d_coords = instance.coordinates_3d  # [h, w, l, x, y, z, theta]
-    # assert bbox3d_coords is not None
-    # center, wlh, rotation = convert_kitti_bbox_coordinates_to_nu(bbox3d_coords)
-    # track_dict: Dict[str, Any] = {"sample_token": frame_token}
-    # track_dict["translation"] = center.tolist()
-    # track_dict["size"] = wlh.tolist()
-    # track_dict["rotation"] = rotation.elements.tolist()
-    # velocity = instance.bbox3d.velocity
-    # track_dict["velocity"] = list(velocity) if velocity is not None else [1.0, 1.0]
-    # track_dict["tracking_id"] = str(instance.track_id)
-    # track_dict["tracking_name"] = name_from_id(instance.class_id)
-    # track_dict["tracking_score"] = instance.bbox3d.confidence
-    # track_dict["yaw"] = bbox3d_coords[6]
-
-    # AFTER #######################################
-    velocity = instance.velocity
-
-    track_dict: Dict[str, Any] = {"sample_token": instance.sample_token}
-    track_dict["translation"] = instance.translation
-    track_dict["size"] = instance.size
-    track_dict["rotation"] = instance.rotation
-    track_dict["velocity"] = velocity if velocity is not None else [1.0, 1.0]
-    track_dict["tracking_id"] = instance.tracking_id
-    track_dict["tracking_name"] = instance.tracking_name # name_from_id(instance.class_id)
-    track_dict["tracking_score"] = instance.tracking_score # confidence 
-
-    # track_dist = instance.serialize()
+    track_dict: Dict[str, Any] = {"sample_token": frame_token}
+    track_dict["translation"] = translation
+    track_dict["size"] = size
+    track_dict["rotation"] = rotation
+    track_dict["velocity"] = velocity
+    track_dict["tracking_id"] = tracking_id
+    track_dict["tracking_name"] = tracking_name # name_from_id(instance.class_id)
+    track_dict["tracking_score"] = tracking_score # confidence 
 
     return track_dict
 
 
-def add_results_to_submit(submission: Dict[str, Dict[str, Any]], frame_token: str,
-                      predicted_instances: Iterable[TrackingBox]) -> None:
+def add_results_to_submit( submission: Dict[str, Dict[str, Any]], 
+                            frame_token: str,
+                            predicted_instance_dicts: Iterable[Dict[str, Any]] ) -> None:
     assert frame_token not in submission["results"], submission["results"][frame_token]
     submission["results"][frame_token] = []
 
-    for instance in predicted_instances:
-        if instance.report_mot:
-            submission["results"][frame_token].append(build_results_dict(instance, frame_token))
+    for instance_dict in predicted_instance_dicts:
+        submission["results"][frame_token].append(instance_dict)
 
     if len(submission["results"][frame_token]) == 0:
         print(f"Nothing tracked for {frame_token}")

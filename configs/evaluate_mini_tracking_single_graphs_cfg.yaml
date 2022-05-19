@@ -55,7 +55,7 @@ dataset_params:
   sequence_sample_list_val_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_mini_nuscenes/sequence_sample_list_mini_val.pkl'
 
   # Dataset Processing params:
-  dataset_version: 'v1.0-trainval'
+  dataset_version: 'v1.0-mini'
   dataroot : '/media/HDD2/Datasets/mini_nusc'
   is_windows_path : False
 
@@ -97,6 +97,7 @@ eval_params:
   debbuging_mode : True
   visualize_graph : False
   save_graphs : True
+  save_single_graph_submission: True
   # check_val_every_n_epoch: 9999
   # val_percent_check: 0.15 # Percentage of the entire dataset used each time that validation loss is computed
   # mot_metrics_to_log: ['mota', 'norm_mota', 'idf1', 'norm_idf1', 'num_switches', 'num_misses', 'num_false_positives', 'num_fragmentations', 'constr_sr']

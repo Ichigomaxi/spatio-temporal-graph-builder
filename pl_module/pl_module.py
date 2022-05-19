@@ -24,7 +24,7 @@ from torch.optim import lr_scheduler as lr_sched_module
 from torch_geometric.data import DataLoader
 from tracker.mpn_tracker import MPNTracker, NuscenesMPNTracker
 from utils.evaluation import (assign_definitive_connections, assign_track_ids,
-                              build_tracking_boxes, prepare_for_submission)
+                              add_tracked_boxes_to_submission, prepare_for_submission)
 from utils.misc import save_pickle
 from utils.path_cfg import OUTPUT_PATH
 from visualization.visualize_graph import (visualize_eval_graph,
@@ -247,7 +247,7 @@ class MOTNeuralSolver(pl.LightningModule):
         seq_sample_list = dataset.seq_frame_ixs
         
         inferred_mot_graphs = []
-
+        summaries = []
         num_mot_graph_in_dataset = len(seq_sample_list)
         # limit number for debugging purposes
         if self.hparams['eval_params']['debbuging_mode']:
@@ -285,14 +285,21 @@ class MOTNeuralSolver(pl.LightningModule):
             summary = {}
             summary = prepare_for_submission(summary)
             # Build TrackingBox List for evaluation
-            build_tracking_boxes(summary,scene_token = seq_name,
-                            sample_token = start_frame, mot_graph = mot_graph)
+            summary = add_tracked_boxes_to_submission(summary, mot_graph = mot_graph)
             
             if(self.hparams['eval_params']['visualize_graph']):
                 geometry_list = visualize_eval_graph(mot_graph)
                 visualize_geometry_list(geometry_list)
             
             inferred_mot_graphs.append(mot_graph)
+            summaries.append(summary)
+
+        if (self.hparams['eval_params']['save_single_graph_submission']):
+            for i, summary in enumerate(summaries):
+                inferred_detections_path = osp.join(output_files_dir,str(i))
+                os.makedirs(inferred_detections_path, exist_ok=True) # Make sure dir exists
+                save_to_json_file(summary, folder_name= inferred_detections_path , 
+                        version= self.hparams['test_dataset_mode'] )
         # save objects for visualization
         if(self.hparams['eval_params']['save_graphs']):
             os.makedirs(output_files_dir, exist_ok=True) # Make sure dir exists

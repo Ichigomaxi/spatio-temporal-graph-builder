@@ -1,20 +1,22 @@
 from nuscenes.eval.tracking.evaluate import TrackingEval
-from nuscenes.eval.tracking.data_classes import TrackingMetrics, TrackingMetricDataList, TrackingConfig, TrackingBox
+from nuscenes.eval.tracking.data_classes import TrackingMetrics, TrackingMetricDataList, TrackingConfig, TrackingBox, TRACKING_NAMES
 import json
 
-config_path = "configs/nuscenes_eval/mot_car_evaluation.json"
-# config_path = 'configs/nuscenes_eval/tracking_nips_2019.json'
+# config_path = "configs/nuscenes_eval/mot_car_evaluation.json"
+config_path = 'configs/nuscenes_eval/tracking_nips_2019.json'
 
+cfg_ =None
 with open(config_path, 'r') as _f:
             cfg_ = TrackingConfig.deserialize(json.load(_f))
+# TRACKING_NAMES = cfg_.tracking_names
 
-result_path_ = ""
+result_path_ = "/media/HDD2/students/maximilian/spatio-temporal-gnn/evalutation_single_graphs/05-19_17:46_evaluation_single_graphs/0/mini_val_tracking.json"
 
 eval_set_ = "mini_val"
 
 output_dir_=  '/media/HDD2/students/maximilian/spatio-temporal-gnn/mot_metric/'+ eval_set_
 
-version_ = 'v1.0-trainval'
+version_ = 'v1.0-mini'
 
 dataroot_ = '/media/HDD2/Datasets/mini_nusc'
 

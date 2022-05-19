@@ -61,3 +61,6 @@ https://github.com/cheind/py-motmetrics
 https://pypi.org/project/motmetrics/
 pip install motmetrics
 motmetrics                1.2.5                    pypi_0    pypi
+
+8) install ujson 5.3.0 
+pip install ujson

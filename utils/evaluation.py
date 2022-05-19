@@ -3,7 +3,7 @@ Taken from https://github.com/dvl-tum/mot_neural_solver
 Check out the corresponding Paper https://arxiv.org/abs/1912.07515
 This is serves as inspiration for our own code
 '''
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 import numpy as np
 import pandas as pd
 
@@ -32,8 +32,9 @@ from nuscenes.nuscenes import NuScenes
 from nuscenes.nuscenes import Box
 from nuscenes.eval.tracking.data_classes import TrackingConfig,TrackingBox
 from nuscenes.eval.tracking.evaluate import TrackingEval
-from datasets.nuscenes.reporting import add_results_to_submit
+from datasets.nuscenes.reporting import add_results_to_submit,build_results_dict
 from datasets.nuscenes.classes import name_from_id
+from pyquaternion import Quaternion
 
 ###########################################################################
 # MOT Metrics
@@ -316,10 +317,13 @@ def assign_track_ids(graph_object:Graph, frames_per_graph:int, nuscenes_handle:N
 
     return tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id
     
-def build_tracking_boxes(submission: Dict[str, Dict[str, Any]], scene_token, sample_token, mot_graph:NuscenesMotGraph):
+def add_tracked_boxes_to_submission(submission: Dict[str, Dict[str, Any]],
+                                mot_graph:NuscenesMotGraph) -> Dict[str, Dict[str, Any]]:
     """
-    Idea Mirror sample_annotation-table 
-    
+    Builds list of sample_results-dictionaries for a specific time-frame.
+    Idea Mirror sample_annotation-table
+
+    sample_results-dictionaries structure :
     sample_result {
         "sample_token":   <str>         -- Foreign key. Identifies the sample/keyframe for which objects are detected.
         "translation":    <float> [3]   -- Estimated bounding box location in meters in the global frame: center_x, center_y, center_z.
@@ -334,31 +338,52 @@ def build_tracking_boxes(submission: Dict[str, Dict[str, Any]], scene_token, sam
                                         The score is used to determine positive and negative tracks via thresholding.
     }
     """
-    trackingBoxes :List[TrackingBox] = []
+    trackingBoxes_dict :Dict[str,List[Dict[str, Any]]] = {
+                sample_tokens: [] for sample_tokens in mot_graph.graph_dataframe["available_sample_tokens"]
+                }
+
     for node_id in range(len(mot_graph.graph_dataframe["boxes_list_all"])):
         box:Box = mot_graph.graph_dataframe["boxes_list_all"][node_id]
-        translation = box.center
-        size = box.wlh
-        rotation = box.orientation 
-        velocity = box.velocity if not np.isnan(box.velocity).any() else [1.0, 1.0]
-        tracking_id = mot_graph.graph_obj.tracking_IDs[node_id]
-        class_id:torch.Tensor = mot_graph.graph_dataframe["class_ids"][node_id]
-        class_id = class_id.tolist()[0]
-        tracking_name = name_from_id(class_id= class_id) # name_from_id(instance.class_id)
-        tracking_score  = mot_graph.graph_obj.tracking_confidence_by_node_id # confidence 
+        # sample_token: str
+        # translation: Tuple[float, float, float] = (0, 0, 0),
+        # size: Tuple[float, float, float] = (0, 0, 0),
+        # rotation: Tuple[float, float, float, float] = (0, 0, 0, 0),
+        # velocity: Tuple[float, float] = (0, 0),
+        current_sample_token:str = mot_graph.graph_dataframe["sample_tokens"][node_id]
+        translation: List[float] = box.center.tolist()
+        size : List[float]  = box.wlh.tolist()
+        orientation: Quaternion = box.orientation
+        rotation: List[float] = [orientation.w, orientation.x, orientation.y, orientation.z]
+        velocity : List[float]= [0.0, 0.0] # fixed velocity
 
-        tracking_box = TrackingBox(sample_token= sample_token,
-                                        translation= translation, size=size, 
-                                        rotation= rotation, 
-                                        velocity= velocity, 
-                                        tracking_id= tracking_id,
-                                        tracking_name= tracking_name,
-                                        tracking_score= tracking_score)
-        trackingBoxes.append(tracking_box)
+        # tracking_id: str = '',  # Instance id of this object.
+        # tracking_name: str = '',  # The class name used in the tracking challenge.
+        # tracking_score: float = -1.0): 
+        tracking_id_float :float = mot_graph.graph_obj.tracking_IDs[node_id].squeeze().tolist()
+        tracking_id_int :int = int(tracking_id_float)
+        tracking_id : str = str(tracking_id_int) 
+        class_id:torch.Tensor = mot_graph.graph_dataframe["class_ids"][node_id].squeeze()
+        class_id :int = class_id.tolist()
+        tracking_name : str = name_from_id(class_id= class_id) # name_from_id(instance.class_id)
+        tracking_score:torch.Tensor = mot_graph.graph_obj.tracking_confidence_by_node_id[node_id]
+        tracking_score : float = tracking_score.squeeze().tolist() # confidence 
+
+        tracking_box_dict: Dict[str, Any] = build_results_dict(current_sample_token, translation,
+                                size, 
+                                rotation, velocity,
+                                tracking_id, tracking_name,
+                                tracking_score)
+
+
+        trackingBoxes_dict[current_sample_token].append(tracking_box_dict)
     
-    add_results_to_submit(submission, frame_token = sample_token,
-                    predicted_instances = trackingBoxes)
+    assert len(trackingBoxes_dict) == mot_graph.max_frame_dist, "tracking boxes are assigned to more sample_tokens then there are frames per graph"
+
+    for current_sample_token in trackingBoxes_dict:
+        trackingBoxes = trackingBoxes_dict[current_sample_token]
+        add_results_to_submit(submission, frame_token=current_sample_token, predicted_instance_dicts= trackingBoxes)
         
+    return submission
 
 
 def prepare_for_submission(submission: Dict[str, Dict[str, Any]]):

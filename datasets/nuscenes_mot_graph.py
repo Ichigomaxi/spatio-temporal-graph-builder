@@ -1,6 +1,7 @@
 # from ctypes import Union
 from turtle import shape
 from typing import Dict, List, Union
+from matplotlib.style import available
 
 import numpy as np
 import torch
@@ -147,7 +148,7 @@ class NuscenesMotGraph(object):
         # Combine all lists within boxes Dict into one list
         # Add in chronological order
         # append dict to graph_dataframe
-        box_list = []
+        box_list: List[Box] = []
         for box_list_i_key in range(self.max_frame_dist):
             box_list_i = graph_dataframe["boxes_dict"][box_list_i_key]
             box_list = box_list + box_list_i
@@ -186,12 +187,31 @@ class NuscenesMotGraph(object):
         graph_dataframe["timeframes_all"] = t_frame_number
         
         # Add object class according to tracking own classes 
-        class_ids =  t_frame_number = torch.zeros((t_centers_list.shape[0],1), dtype=torch.int8).to(self.device)
+        class_ids =  torch.zeros((t_centers_list.shape[0],1), dtype=torch.int8).to(self.device)
         for i,box in enumerate(graph_dataframe["boxes_list_all"]):
             class_id = determine_class_id(box.name) 
             class_ids [i] = class_id
         graph_dataframe["class_ids"] = class_ids
         assert (graph_dataframe["class_ids"]!=0).all(), "some nodes were not assigned a suitable class id"
+        
+        # Add sample_token for each node. Important for evaluation
+        sample_tokens = []
+        for box in graph_dataframe["boxes_list_all"]:
+            annotation_token = box.token
+            annotation_table = self.nuscenes_handle.get('sample_annotation', annotation_token)
+            sample_tokens.append(annotation_table['sample_token'])
+        assert len(sample_tokens) == len(box_list)
+        graph_dataframe["sample_tokens"] = sample_tokens
+        
+        # Add list of available sample_tokens in this graph
+        available_sample_tokens: List[str] = []
+        sample_token = self.start_frame
+        for frame_i in range(self.max_frame_dist):
+            available_sample_tokens.append(sample_token)
+            sample = self.nuscenes_handle.get('sample', sample_token)
+            sample_token = sample["next"]
+        assert available_sample_tokens[0] != available_sample_tokens[1]
+        graph_dataframe["available_sample_tokens"] = available_sample_tokens
 
         return graph_dataframe
 
