@@ -3,19 +3,22 @@ Taken and adapted from https://github.com/aleksandrkim61/EagerMOT
 Check out the corresponding Paper https://arxiv.org/abs/2104.14682
 This is serves as inspiration for our own code
 '''
-from typing import  List
+from typing import  Any, Dict, Iterable, List
+from matplotlib.style import available
 import numpy as np
 
 import torch
 
 from datasets.mot_graph import Graph
+from datasets.nuscenes_mot_graph import NuscenesMotGraph
 from utils import graph
-
-from utils.graph import get_knn_mask, to_undirected_graph, to_lightweight_graph
 
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 from model.mpn import MOTMPNet
 
+from utils.evaluation import add_tracked_boxes_to_submission, assign_definitive_connections, assign_track_ids
+from datasets.nuscenes.reporting import add_results_to_submit, build_results_dict
+from utils.nuscenes_helper_functions import skip_sample_token, get_all_samples_from_scene
 class MPNTracker:
     """
     Class used to track video sequences.
@@ -51,41 +54,151 @@ class NuscenesMPNTracker(MPNTracker):
                     eval_params=None, dataset_params=None, logger=None):
         super().__init__(dataset, graph_model, use_gt, eval_params, dataset_params, logger)
         ###
-        print("Initialized Tracker")
 
-    def _predict_edges(self, subgraph):
+        print("Initialized Nuscenes Tracker")
+
+    def _predict_edges(self, graph_obj:Graph):
         """
 
         """
-        # Prune graph edges
-        knn_mask = get_knn_mask(pwise_dist=subgraph.reid_emb_dists, edge_ixs=subgraph.edge_index,
-                                num_nodes=subgraph.num_nodes, top_k_nns=self.dataset_params['top_k_nns'],
-                                use_cuda=True, reciprocal_k_nns=self.dataset_params['reciprocal_k_nns'],
-                                symmetric_edges=True)
-        subgraph.edge_index = subgraph.edge_index.T[knn_mask].T
-        subgraph.edge_attr = subgraph.edge_attr[knn_mask]
-        if hasattr(subgraph, 'edge_labels'):
-            subgraph.edge_labels = subgraph.edge_labels[knn_mask]
-
         # Predict active edges
         if self.use_gt:  # For debugging purposes and obtaining oracle results
-            pruned_edge_preds = subgraph.edge_labels
+            edge_preds = graph_obj.edge_labels
 
         else:
             with torch.no_grad():
-                pruned_edge_preds = torch.sigmoid(self.graph_model(subgraph)['classified_edges'][-1].view(-1))
+                edge_preds = torch.sigmoid(self.graph_model(graph_obj)['classified_edges'][-1].view(-1))
 
-        edge_preds = torch.zeros(knn_mask.shape[0]).to(pruned_edge_preds.device)
-        edge_preds[knn_mask] = pruned_edge_preds
+        return edge_preds
 
-        if self.eval_params['set_pruned_edges_to_inactive']:
-            return edge_preds, torch.ones_like(knn_mask)
+    def _perform_tracking_for_mot_graph(self,mot_graph:NuscenesMotGraph,):
 
+        dataset:NuscenesMOTGraphDataset = self.dataset
+        # Compute active connections
+        assign_definitive_connections(mot_graph)
+        
+        # Assign Tracks
+        tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id = assign_track_ids(mot_graph.graph_obj, 
+                    frames_per_graph = mot_graph.max_frame_dist, 
+                    nuscenes_handle = dataset.nuscenes_handle)
+        mot_graph.graph_obj.tracking_IDs = tracking_IDs
+        mot_graph.graph_obj.tracking_confidence_by_node_id = tracking_confidence_by_node_id
+
+        return tracking_ID_dict
+
+    def _load_and_infere_mot_graph(self,scene_token:str, sample_token:str):
+        dataset:NuscenesMOTGraphDataset = self.dataset
+        mot_graph:NuscenesMotGraph = dataset.get_from_frame_and_seq(
+                                                scene_token ,
+                                                sample_token ,
+                                                return_full_object = True)
+        # Compute edge predictions
+        edge_preds = self._predict_edges(mot_graph.graph_obj)
+        mot_graph.graph_obj.edge_preds = edge_preds
+        return mot_graph
+
+    def _init_new_global_tracks(self, global_tracking_dict:Dict[torch.Tensor, str],
+                                    new_tracking_id_dict:Dict[torch.Tensor, torch.Tensor],
+                                    selected_local_tracking_ids:List[torch.Tensor],
+                                    sample_token:str):
+        '''
+        give new track Ids to selected Nodes
+        '''
+        # Determine helping variables
+        key = selected_local_tracking_ids[0]
+        device = new_tracking_id_dict[key].device
+        common_tracking_dtype = torch.float32
+
+        # Generate new tracking Ids depending on number of untracked nodes
+        last_id = 0
+        # if global_tracking_dict is not empty update it
+        if global_tracking_dict:
+            last_id = max([key_tracking_id for key_tracking_id in global_tracking_dict])
+
+            new_start = last_id + 1
+            num_selected_nodes = len(selected_local_tracking_ids)
+            new_tracking_IDs = torch.arange(start= new_start, end= new_start + num_selected_nodes,
+                                    step=1, dtype= common_tracking_dtype, device=device)
+        # if global_tracking_dict empty just fill it with given tracking ids
         else:
-            return edge_preds, knn_mask  # In this case, pruning an edge counts as not predicting a value for it at all
-            # However, if it is pruned for every batch, then it counts as inactive.
+            new_tracking_IDs = torch.stack(selected_local_tracking_ids)
+        # Update global dictionary
+        self._update_global_tracking_dict(new_tracking_IDs, global_tracking_dict, sample_token)
+        # Update new_tracking_dict
+        for i, local_tracking_id in enumerate(selected_local_tracking_ids):
+            new_tracking_id_dict[local_tracking_id] = new_tracking_IDs[i]
 
-    def track(self, scene_table:List[dict], output_path=None):
+    def _update_global_tracking_dict(self,new_tracking_ids, tracking_ID_dict, sample_token:str):
+        tracking_ID_dict.update({track_id : sample_token for track_id in new_tracking_ids})
+
+
+    def _assign_global_tracking_ids(self, previous_mot_graph:NuscenesMotGraph, new_mot_graph:NuscenesMotGraph,
+                            previous_tracking_id_dict:Dict[torch.Tensor,torch.Tensor] ,
+                            new_tracking_id_dict:Dict[torch.Tensor, torch.Tensor] ,
+                            global_tracking_dict:Dict[torch.Tensor, str],
+                            concatenation_sample_token: str):
+        '''
+        '''
+        
+        # make sure both mot_graphs contain the same time_frame aka sample_token
+        assert concatenation_sample_token in previous_mot_graph.graph_dataframe['available_sample_tokens']\
+                and concatenation_sample_token in new_mot_graph.graph_dataframe['available_sample_tokens']
+
+        # Get corresponding old_node_idx to new_node_idx from concatenation frame 
+        old_available_tokens:List[str] = previous_mot_graph.graph_dataframe['available_sample_tokens']
+        old_time_frame = old_available_tokens.index(concatenation_sample_token)
+        t_old_frame_number: torch.Tensor = previous_mot_graph.graph_obj.timeframe_number 
+        old_node_idx = (t_old_frame_number == old_time_frame).nonzero().squeeze()
+
+        new_available_tokens:List[str] = new_mot_graph.graph_dataframe['available_sample_tokens']
+        new_time_frame = new_available_tokens.index(concatenation_sample_token)
+        t_new_frame_number: torch.Tensor = new_mot_graph.graph_obj.timeframe_number 
+        new_node_idx = (t_new_frame_number == old_time_frame).nonzero().squeeze()
+        
+        assert len(old_node_idx) == (new_node_idx)
+        assert previous_mot_graph.graph_dataframe["boxes_list_all"][old_node_idx] == new_mot_graph.graph_dataframe["boxes_list_all"][new_node_idx]
+        
+        # Assign global tracking_ids
+        changed_local_tracking_ids = []
+        for i in range(len(old_node_idx)):
+            old_node_id = old_node_idx[i]
+            new_node_id = new_node_idx[i]
+            old_local_tracking_id = previous_mot_graph.graph_obj.tracking_IDs
+            new_local_tracking_id = new_mot_graph.graph_obj.tracking_IDs
+            global_tracking_id = previous_tracking_id_dict[old_local_tracking_id]
+            new_tracking_id_dict[new_local_tracking_id] = global_tracking_id
+            
+            changed_local_tracking_ids.append(new_local_tracking_id)
+
+        # Update global_tracking_dict. 
+        # Add the new global tracking ids for new tracks initialized in new_mot_graph 
+        unchanged_local_tracking_ids :List[torch.Tensor] = [new_local_tracking_id 
+                                for new_local_tracking_id in new_tracking_id_dict
+                                    if  new_local_tracking_id not in changed_local_tracking_ids]
+
+        all_tracking_ids = [track_id for track_id in global_tracking_dict]
+        largest_track_id = max(all_tracking_ids)
+        self._init_new_global_tracks(global_tracking_dict, new_tracking_id_dict,
+                                        unchanged_local_tracking_ids, new_mot_graph.start_frame)
+
+    def _add_tracked_boxes_to_submission(self, 
+                                        submission:Dict[str, Dict[str, Any]],
+                                        mot_graph:NuscenesMotGraph,
+                                        local2global_tracking_id_dict:Dict[torch.Tensor,torch.Tensor],
+                                        starting_sample_token:str = None,
+                                        ending_sample_token:str = None):
+        '''
+        '''
+        assert starting_sample_token not in submission["results"], submission["results"][starting_sample_token]
+        assert ending_sample_token not in submission["results"], submission["results"][ending_sample_token]
+
+        add_tracked_boxes_to_submission(submission,
+                                        mot_graph,
+                                        local2global_tracking_id_dict,
+                                        starting_sample_token,
+                                        ending_sample_token)
+
+    def track(self, scene_table:List[dict], submission: Dict[str, Dict[str, Any]]):
         """
         Main method. Given a sequence name, it tracks all detections and produces an output DataFrame, where each
         detection is assigned an ID.
@@ -101,49 +214,92 @@ class NuscenesMPNTracker(MPNTracker):
 
         print(f"Processing Seq {seq_name}")
 
-        frames_per_graph = self.dataset.dataset_params['max_frame_dist']
-        max_frame_dist = self.dataset.dataset_params['max_frame_dist']
-        list_scene_sample_tuple = self.dataset.get_samples_from_one_scene(scene_token)
-
-        edge_predictions = {}
-        graphs = {}
-        for scene_sample_tuple in list_scene_sample_tuple:
+        dataset:NuscenesMOTGraphDataset = self.dataset
+        frames_per_graph = dataset.dataset_params['max_frame_dist']
+        filtered_list_scene_sample_tuple = dataset.get_filtered_samples_from_one_scene(scene_token)
+        all_available_samples = get_all_samples_from_scene(scene_token, dataset.nuscenes_handle )
+        # edge_predictions = {}
+        # graphs = {}
+        current_sample_token = scene_table['first_sample_token']
+        previous_mot_graph:NuscenesMotGraph = None
+        previous_tracking_dict = {}
+        global_tracking_dict: Dict[int:str] = {}
+        while (current_sample_token != scene_table['last_sample_token']):
             t = time()
-            # # Load the graph corresponding to the entire subsequence
-            sample_token_current = scene_sample_tuple[1]
-            mot_graph = self.dataset.get_from_frame_and_seq(
-                                            scene_token ,
-                                            sample_token_current ,
-                                            return_full_object = True)
-            # subseq_graph = self._load_full_seq_graph_object(seq_name, start_frame if start_frame == frame_cutpoints[0] else start_frame - max_frame_dist,
-            #                                                 end_frame, max_frame_dist)
+            ##############################################################################
+            # check if sample_token is indexed by dataset. 
+            # If not then add empty list to the summmary and skip to next sample_token
+            if ( (scene_token,current_sample_token) not in dataset.seq_frame_ixs):
 
-            # # Feed graph through MPN in batches
-            # Predict active edges
-            edge_preds = None
-            if self.use_gt:  # For debugging purposes and obtaining oracle results
-                edge_preds = mot_graph.graph_obj.edge_labels
+                ##############################################################################
+                # check if current sample_token is within the last #frames_per_graph frames
+                if (current_sample_token in [all_available_samples[-frames_per_graph:]]):
+                    # if true we can concatenate it with the last available frame
+                    _, last_sample_token = filtered_list_scene_sample_tuple[-1]
+                    last_mot_graph = self._load_and_infere_mot_graph(scene_token , last_sample_token)
+                    
+                    last_tracking_ID_dict = self._perform_tracking_for_mot_graph( last_mot_graph )
+                    # Concatenate
+                    #TODO
+                    self._assign_global_tracking_ids(previous_mot_graph,last_mot_graph,
+                                            previous_tracking_dict,
+                                            last_tracking_ID_dict, global_tracking_dict,
+                                            current_sample_token)
+                    # assign last sample_token. Should be the same as last frame of scene
+                    next_sample_token = last_mot_graph.graph_dataframe['available_sample_tokens'][-1]
+                    self._add_tracked_boxes_to_submission(submission,
+                                                            last_mot_graph,
+                                                            last_tracking_ID_dict,
+                                                            current_sample_token)
+                else:
+                    add_results_to_submit(submission ,frame_token= current_sample_token, predicted_instance_dicts=[])
+                    next_sample_token = skip_sample_token(current_sample_token,0, dataset.nuscenes_handle)
 
             else:
-                with torch.no_grad():
-                    edge_preds = torch.sigmoid(self.graph_model(mot_graph.graph_obj)['classified_edges'][-1].view(-1))
-                    print(edge_preds)
+                ##############################################################################
+                # Perform tracking on mot-graph for the next #frames_per_graph frames
+                # Returns Tracking Ids and tracking_id_dict
+                
+                # Load the graph corresponding to the entire subsequence
+                mot_graph = self._load_and_infere_mot_graph(scene_token ,current_sample_token)
 
-            edge_predictions[sample_token_current] = edge_preds
-            graphs[sample_token_current] = mot_graph 
-            
+                tracking_ID_dict = self._perform_tracking_for_mot_graph(mot_graph)
 
-            # subseq_graph = self._evaluate_graph_in_batches(subseq_graph, frames_per_graph)
+                last_sample_token = mot_graph.graph_dataframe['available_sample_tokens'][-1]
+                ##############################################################################
+                # Concatenate with previous Update new tracking dict
+                if ( (previous_mot_graph is not None) 
+                    and last_sample_token in previous_mot_graph.graph_dataframe['available_sample_tokens']):
+                    # Concatenate
+                    # Update Dictionaries
+                    #TODO
+                    self._assign_global_tracking_ids(previous_mot_graph, mot_graph, 
+                                                    previous_tracking_dict, tracking_ID_dict,
+                                                    global_tracking_dict,
+                                                    last_sample_token)
+                    
+                # If there is not any previous mot_graph or the previous went out of scope for the current graph-"window"
+                # open new tracks
+                else:
+                    #TODO
+                    selected_local_tracking_ids = [ local_tracking_id for local_tracking_id in tracking_ID_dict]
+                    self._init_new_global_tracks(global_tracking_dict, tracking_ID_dict, 
+                                                    selected_local_tracking_ids, current_sample_token)
 
-            # # Round predictions and assign IDs to trajectories
-            # subseq_graph = self._project_graph_model_output(subseq_graph)
+                # Add tracked boxes to summary
+                self._add_tracked_boxes_to_submission(submission, mot_graph,
+                                                        tracking_ID_dict)
+                ##############################################################################
+                # Save new_tracking_dict as old_tracking_dict and new_mot_graph as old_mot_graph
+                previous_mot_graph = mot_graph
+                previous_tracking_dict = tracking_ID_dict
 
+                ##############################################################################
+                # Go to next sample_token 
+                next_sample_token = skip_sample_token(current_sample_token,0, dataset.nuscenes_handle)
 
-            # del subseq_graph
-            #print("Max Mem allocated:", torch.cuda.max_memory_allocated(torch.device('cuda:0'))/1e9)
-            #print(f"Done with Sequence chunk, it took {time()-t}")
-
-        # if output_path is not None:
-        #     self._save_results_to_file(seq_df, output_path)
-
-        return None
+            # Assign new current_sample_token
+            current_sample_token = next_sample_token
+            # print Information
+            print("Max Mem allocated:", torch.cuda.max_memory_allocated(torch.device(self.dataset.device))/1e9)
+            print(f"Done with Sequence chunk, it took {time()-t}")

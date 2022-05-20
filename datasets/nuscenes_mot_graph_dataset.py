@@ -192,7 +192,7 @@ class NuscenesMOTGraphDataset(object):
 
         return filtered_sample_list
 
-    def get_samples_from_one_scene(self,searched_scene_token:str) -> List[Tuple[str,str]]:
+    def get_filtered_samples_from_one_scene(self,searched_scene_token:str) -> List[Tuple[str,str]]:
         """
         Returns a List of all scene_token-sample_token tuples that correspond to a certain scene
         Args:

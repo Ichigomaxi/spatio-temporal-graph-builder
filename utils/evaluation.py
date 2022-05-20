@@ -3,6 +3,8 @@ Taken from https://github.com/dvl-tum/mot_neural_solver
 Check out the corresponding Paper https://arxiv.org/abs/1912.07515
 This is serves as inspiration for our own code
 '''
+from tracemalloc import start
+from turtle import st
 from typing import Any, Dict, List, Tuple
 import numpy as np
 import pandas as pd
@@ -228,7 +230,9 @@ def assign_track_ids(graph_object:Graph, frames_per_graph:int, nuscenes_handle:N
                             len(Dict.keys) = num_tracking_IDs
                             later on it should be used to match with the official_tracking Ids (Instance Ids) 
     '''
-    def init_new_tracks(selected_node_idx, tracking_IDs:torch.Tensor, tracking_ID_dict: Dict[int, Any]):
+    def init_new_tracks(selected_node_idx : torch.Tensor, 
+                        tracking_IDs : torch.Tensor, 
+                        tracking_ID_dict: Dict[torch.Tensor, torch.Tensor]):
         '''
         give new track Ids to selected Nodes
         '''
@@ -248,7 +252,8 @@ def assign_track_ids(graph_object:Graph, frames_per_graph:int, nuscenes_handle:N
         # Update dictionary
         update_tracking_dict(new_tracking_IDs, tracking_ID_dict)
 
-    def update_tracking_dict(new_tracking_ids, tracking_ID_dict):
+    def update_tracking_dict(new_tracking_ids :torch.Tensor,
+                                tracking_ID_dict: Dict[torch.Tensor, torch.Tensor]):
         tracking_ID_dict.update({track_id : track_id for track_id in new_tracking_ids})
 
     device = graph_object.device()
@@ -259,7 +264,7 @@ def assign_track_ids(graph_object:Graph, frames_per_graph:int, nuscenes_handle:N
 
     tracking_confidence_by_node_id:torch.Tensor = torch.zeros(graph_object.x.shape[0]).to(device)
 
-    tracking_ID_dict: Dict[int, Any]= {}
+    tracking_ID_dict: Dict[torch.Tensor, torch.Tensor]= {}
 
     edge_indices = graph_object.edge_index
 
@@ -318,7 +323,10 @@ def assign_track_ids(graph_object:Graph, frames_per_graph:int, nuscenes_handle:N
     return tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id
     
 def add_tracked_boxes_to_submission(submission: Dict[str, Dict[str, Any]],
-                                mot_graph:NuscenesMotGraph) -> Dict[str, Dict[str, Any]]:
+                                        mot_graph:NuscenesMotGraph,
+                                        local2global_tracking_id_dict :Dict[torch.Tensor,torch.Tensor] = None,
+                                        starting_sample_token:str= None,
+                                        ending_sample_token:str= None) -> Dict[str, Dict[str, Any]]:
     """
     Builds list of sample_results-dictionaries for a specific time-frame.
     Idea Mirror sample_annotation-table
@@ -341,8 +349,26 @@ def add_tracked_boxes_to_submission(submission: Dict[str, Dict[str, Any]],
     trackingBoxes_dict :Dict[str,List[Dict[str, Any]]] = {
                 sample_tokens: [] for sample_tokens in mot_graph.graph_dataframe["available_sample_tokens"]
                 }
+    first_node_id = 0
+    last_node_id = len(mot_graph.graph_dataframe["boxes_list_all"])
 
-    for node_id in range(len(mot_graph.graph_dataframe["boxes_list_all"])):
+    
+
+    if starting_sample_token is not None:
+        start_timeframe:int = mot_graph.graph_dataframe['available_sample_tokens'].index(starting_sample_token)
+        t_frame_number: torch.Tensor = mot_graph.graph_obj.timeframe_number 
+        start_node_idx = (t_frame_number == start_timeframe).nonzero().squeeze()
+        first_node_id = start_node_idx[0]
+
+    if ending_sample_token is not None:
+        end_timeframe:int = mot_graph.graph_dataframe['available_sample_tokens'].index(ending_sample_token)
+        t_frame_number: torch.Tensor = mot_graph.graph_obj.timeframe_number 
+        end_node_idx = (t_frame_number == end_timeframe).nonzero().squeeze()
+        last_node_id = end_node_idx[-1]
+
+    selected_node_idx = range(first_node_id, last_node_id + 1)
+
+    for node_id in selected_node_idx:
         box:Box = mot_graph.graph_dataframe["boxes_list_all"][node_id]
         # sample_token: str
         # translation: Tuple[float, float, float] = (0, 0, 0),
@@ -359,7 +385,13 @@ def add_tracked_boxes_to_submission(submission: Dict[str, Dict[str, Any]],
         # tracking_id: str = '',  # Instance id of this object.
         # tracking_name: str = '',  # The class name used in the tracking challenge.
         # tracking_score: float = -1.0): 
-        tracking_id_float :float = mot_graph.graph_obj.tracking_IDs[node_id].squeeze().tolist()
+        
+        tracking_id_local:torch.Tensor = mot_graph.graph_obj.tracking_IDs[node_id]
+        tracking_id_float :float = tracking_id_local.squeeze().tolist()
+        if local2global_tracking_id_dict:
+            tracking_id_global = local2global_tracking_id_dict[tracking_id_local]
+            tracking_id_float :float = tracking_id_global.squeeze().tolist()
+
         tracking_id_int :int = int(tracking_id_float)
         tracking_id : str = str(tracking_id_int) 
         class_id:torch.Tensor = mot_graph.graph_dataframe["class_ids"][node_id].squeeze()

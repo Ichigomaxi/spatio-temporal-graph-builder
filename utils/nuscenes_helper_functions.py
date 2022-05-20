@@ -111,3 +111,28 @@ def determine_class_id(box_name:str):
             class_id = id_from_name(name)
             return class_id
     assert False, "Given Box_name does not contain a suitable class for the tracking challenge!!!!"
+
+def skip_sample_token(sample_token:str, num_skip:int ,nuscenes_handle:NuScenes):
+    '''
+    Return sample token after skipping num_skip tokens
+    for next token is returned if num_skip = 0
+    '''
+    assert num_skip >= 0
+    next_sample_token = sample_token
+    for i in range(num_skip + 1):
+        sample = nuscenes_handle.get('sample',sample_token)
+        next_sample_token = sample['next']
+    return next_sample_token
+
+def get_all_samples_from_scene(scene_token:str,
+                                nuscenes_handle:NuScenes)\
+                                -> List[str]:
+    samples =[]
+    scene = nuscenes_handle.get("scene",scene_token)
+    sample_token = scene['first_sample_token']
+    samples.append(sample_token)
+    while (sample_token != scene['last_sample_token']):
+        sample_token = skip_sample_token(sample_token,0, nuscenes_handle=nuscenes_handle)
+        samples.append(sample_token)
+    
+    return samples

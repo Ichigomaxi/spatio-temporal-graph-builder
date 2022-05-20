@@ -22,7 +22,7 @@ from torch import optim as optim_module
 from torch.nn import functional as F
 from torch.optim import lr_scheduler as lr_sched_module
 from torch_geometric.data import DataLoader
-from tracker.mpn_tracker import MPNTracker, NuscenesMPNTracker
+from tracker.mpn_tracker import NuscenesMPNTracker
 from utils.evaluation import (assign_definitive_connections, assign_track_ids,
                               add_tracked_boxes_to_submission, prepare_for_submission)
 from utils.misc import save_pickle
@@ -322,14 +322,17 @@ class MOTNeuralSolver(pl.LightningModule):
         # Initiallize some kind of Tracker object
         tracker = NuscenesMPNTracker(
                             dataset = dataset,
-                             graph_model = self.model,
-                             use_gt= use_gt,
-                             eval_params = self.hparams['eval_params'],
-                             dataset_params = self.hparams['dataset_params'])
+                            graph_model = self.model,
+                            use_gt= use_gt,
+                            eval_params = self.hparams['eval_params'],
+                            dataset_params = self.hparams['dataset_params'])
 
+        # Prepare submission dict
+        summary = {}
+        summary = prepare_for_submission(summary)
 
         # Track detection sequence by sequence
-        ouput_tracking_dict = {}
+
         split = self.hparams["test_dataset_mode"]
         # sequence_names = dataset.nuscenes_dataset.splits_to_scene_names[split]
         scene_tables = dataset.seqs_to_retrieve
@@ -340,12 +343,16 @@ class MOTNeuralSolver(pl.LightningModule):
 
             # computing tracking for a certain scene/sequence 
             # Return list of tracked bounding boxes as Trackbox-class
-            os.makedirs(output_files_dir, exist_ok=True)
-            ouput_tracking_dict[seq_name] = tracker.track(scene_table, output_path=osp.join(output_files_dir, seq_name + '.json'))
+            tracker.track(scene_table, summary)
             
             # save_pickle()
             
             if verbose:
                 print("Done! \n")
 
-        return ouput_tracking_dict
+        if (self.hparams['eval_params']['save_submission']):
+            os.makedirs(output_files_dir, exist_ok=True) # Make sure dir exists
+            save_to_json_file(summary, folder_name= output_files_dir , 
+                    version= self.hparams['test_dataset_mode'] )
+        
+        return summary
