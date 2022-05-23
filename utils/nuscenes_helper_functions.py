@@ -114,13 +114,13 @@ def determine_class_id(box_name:str):
 
 def skip_sample_token(sample_token:str, num_skip:int ,nuscenes_handle:NuScenes):
     '''
-    Return sample token after skipping num_skip tokens
-    for next token is returned if num_skip = 0
+    Return sample token after skipping num_skip tokens.\n
+    To return the next token set num_skip = 0
     '''
     assert num_skip >= 0
     next_sample_token = sample_token
     for i in range(num_skip + 1):
-        sample = nuscenes_handle.get('sample',sample_token)
+        sample = nuscenes_handle.get('sample',next_sample_token)
         next_sample_token = sample['next']
     return next_sample_token
 
@@ -134,5 +134,5 @@ def get_all_samples_from_scene(scene_token:str,
     while (sample_token != scene['last_sample_token']):
         sample_token = skip_sample_token(sample_token,0, nuscenes_handle=nuscenes_handle)
         samples.append(sample_token)
-    
+    assert samples[-1] == scene['last_sample_token']
     return samples

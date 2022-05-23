@@ -260,6 +260,9 @@ class MOTNeuralSolver(pl.LightningModule):
             #         return_full_object=True,
             #         inference_mode=True)
             seq_name, start_frame = dataset.seq_frame_ixs[i]
+            scene = dataset.nuscenes_handle.get("scene", seq_name)
+            print("scene_token: ", scene, "scene_name", scene["name"] )
+            print("sample_token: ",start_frame)
             mot_graph = dataset.get_from_frame_and_seq(
                                         seq_name = seq_name,
                                         start_frame = start_frame,
@@ -274,18 +277,18 @@ class MOTNeuralSolver(pl.LightningModule):
             # Compute active connections
             assign_definitive_connections(mot_graph)
             
-            # Assign Tracks
-            tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id = assign_track_ids(mot_graph.graph_obj, 
-                        frames_per_graph = mot_graph.max_frame_dist, 
-                        nuscenes_handle = dataset.nuscenes_handle)
-            mot_graph.graph_obj.tracking_IDs = tracking_IDs
-            mot_graph.graph_obj.tracking_confidence_by_node_id = tracking_confidence_by_node_id
+            # # Assign Tracks
+            # tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id = assign_track_ids(mot_graph.graph_obj, 
+            #             frames_per_graph = mot_graph.max_frame_dist, 
+            #             nuscenes_handle = dataset.nuscenes_handle)
+            # mot_graph.graph_obj.tracking_IDs = tracking_IDs
+            # mot_graph.graph_obj.tracking_confidence_by_node_id = tracking_confidence_by_node_id
 
-            # Prepare submission dict
+            # # Prepare submission dict
             summary = {}
             summary = prepare_for_submission(summary)
-            # Build TrackingBox List for evaluation
-            summary = add_tracked_boxes_to_submission(summary, mot_graph = mot_graph)
+            # # Build TrackingBox List for evaluation
+            # summary = add_tracked_boxes_to_submission(summary, mot_graph = mot_graph)
             
             if(self.hparams['eval_params']['visualize_graph']):
                 geometry_list = visualize_eval_graph(mot_graph)
@@ -300,6 +303,7 @@ class MOTNeuralSolver(pl.LightningModule):
                 os.makedirs(inferred_detections_path, exist_ok=True) # Make sure dir exists
                 save_to_json_file(summary, folder_name= inferred_detections_path , 
                         version= self.hparams['test_dataset_mode'] )
+
         # save objects for visualization
         if(self.hparams['eval_params']['save_graphs']):
             os.makedirs(output_files_dir, exist_ok=True) # Make sure dir exists

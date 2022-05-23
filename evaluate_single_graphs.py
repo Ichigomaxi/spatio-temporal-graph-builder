@@ -39,6 +39,10 @@ ex.add_config('configs/evaluate_mini_tracking_single_graphs_cfg.yaml')
 
 @ex.automain
 def main(_config, _run):
+    """
+    Mainly serves for debugging and testing of the tracking algorithm for one Graph object.
+    Aims to refine methods before extrapulating to whole sequence.
+    """
 
     ###############
     #sacred.commands.print_config(_run) # No need to print config, as it's overwritten by the one from the ckpt.
@@ -95,8 +99,3 @@ def main(_config, _run):
                         test_dataset, 
                         use_gt = False, 
                         verbose = True)
-
-    
-    # trainer.test(model=model, 
-    #                 dataloaders=test_loader)
-

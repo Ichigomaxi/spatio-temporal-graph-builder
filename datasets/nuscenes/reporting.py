@@ -56,7 +56,7 @@ def build_results_dict(frame_token: str,
 def add_results_to_submit( submission: Dict[str, Dict[str, Any]], 
                             frame_token: str,
                             predicted_instance_dicts: Iterable[Dict[str, Any]] ) -> None:
-    assert frame_token not in submission["results"], submission["results"][frame_token]
+    assert frame_token not in submission["results"], "This Frame has already been added to the submission!: \n{}".format( submission["results"][frame_token])
     submission["results"][frame_token] = []
 
     for instance_dict in predicted_instance_dicts:

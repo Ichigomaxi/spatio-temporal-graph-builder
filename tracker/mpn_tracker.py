@@ -9,6 +9,7 @@ import numpy as np
 
 import torch
 
+from nuscenes.nuscenes import Box
 from datasets.mot_graph import Graph
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
 from utils import graph
@@ -97,17 +98,15 @@ class NuscenesMPNTracker(MPNTracker):
         mot_graph.graph_obj.edge_preds = edge_preds
         return mot_graph
 
-    def _init_new_global_tracks(self, global_tracking_dict:Dict[torch.Tensor, str],
-                                    new_tracking_id_dict:Dict[torch.Tensor, torch.Tensor],
-                                    selected_local_tracking_ids:List[torch.Tensor],
+    def _init_new_global_tracks(self, global_tracking_dict:Dict[int, str],
+                                    new_tracking_id_dict:Dict[int, int],
+                                    selected_local_tracking_ids:List[int],
                                     sample_token:str):
         '''
         give new track Ids to selected Nodes
         '''
         # Determine helping variables
-        key = selected_local_tracking_ids[0]
-        device = new_tracking_id_dict[key].device
-        common_tracking_dtype = torch.float32
+        common_tracking_dtype = torch.int
 
         # Generate new tracking Ids depending on number of untracked nodes
         last_id = 0
@@ -117,25 +116,30 @@ class NuscenesMPNTracker(MPNTracker):
 
             new_start = last_id + 1
             num_selected_nodes = len(selected_local_tracking_ids)
-            new_tracking_IDs = torch.arange(start= new_start, end= new_start + num_selected_nodes,
-                                    step=1, dtype= common_tracking_dtype, device=device)
+            t_new_tracking_IDs:torch.IntTensor = torch.arange(start= new_start, 
+                                    end= new_start + num_selected_nodes,
+                                    step=1, dtype= common_tracking_dtype)
+            new_tracking_IDs:List[int] = t_new_tracking_IDs.squeeze().tolist()
         # if global_tracking_dict empty just fill it with given tracking ids
         else:
-            new_tracking_IDs = torch.stack(selected_local_tracking_ids)
+            new_tracking_IDs:List[int] = selected_local_tracking_ids
         # Update global dictionary
         self._update_global_tracking_dict(new_tracking_IDs, global_tracking_dict, sample_token)
         # Update new_tracking_dict
         for i, local_tracking_id in enumerate(selected_local_tracking_ids):
             new_tracking_id_dict[local_tracking_id] = new_tracking_IDs[i]
 
-    def _update_global_tracking_dict(self,new_tracking_ids, tracking_ID_dict, sample_token:str):
+    def _update_global_tracking_dict(self,
+                        new_tracking_ids:List[int], 
+                        tracking_ID_dict:Dict[int, str], 
+                        sample_token:str):
         tracking_ID_dict.update({track_id : sample_token for track_id in new_tracking_ids})
 
 
     def _assign_global_tracking_ids(self, previous_mot_graph:NuscenesMotGraph, new_mot_graph:NuscenesMotGraph,
-                            previous_tracking_id_dict:Dict[torch.Tensor,torch.Tensor] ,
-                            new_tracking_id_dict:Dict[torch.Tensor, torch.Tensor] ,
-                            global_tracking_dict:Dict[torch.Tensor, str],
+                            previous_tracking_id_dict:Dict[int,int] ,
+                            new_tracking_id_dict:Dict[int, int] ,
+                            global_tracking_dict:Dict[int, str],
                             concatenation_sample_token: str):
         '''
         '''
@@ -148,31 +152,43 @@ class NuscenesMPNTracker(MPNTracker):
         old_available_tokens:List[str] = previous_mot_graph.graph_dataframe['available_sample_tokens']
         old_time_frame = old_available_tokens.index(concatenation_sample_token)
         t_old_frame_number: torch.Tensor = previous_mot_graph.graph_obj.timeframe_number 
-        old_node_idx = (t_old_frame_number == old_time_frame).nonzero().squeeze()
+        old_node_idx:torch.Tensor = (t_old_frame_number == old_time_frame).nonzero(as_tuple=True)[0]
+        old_node_idx:List[int] = old_node_idx.tolist()
 
         new_available_tokens:List[str] = new_mot_graph.graph_dataframe['available_sample_tokens']
         new_time_frame = new_available_tokens.index(concatenation_sample_token)
         t_new_frame_number: torch.Tensor = new_mot_graph.graph_obj.timeframe_number 
-        new_node_idx = (t_new_frame_number == old_time_frame).nonzero().squeeze()
+        new_node_idx:torch.Tensor = (t_new_frame_number == new_time_frame).nonzero(as_tuple=True)[0]
+        new_node_idx:List[int] = new_node_idx.tolist()
         
-        assert len(old_node_idx) == (new_node_idx)
-        assert previous_mot_graph.graph_dataframe["boxes_list_all"][old_node_idx] == new_mot_graph.graph_dataframe["boxes_list_all"][new_node_idx]
+        assert len(old_node_idx) == len(new_node_idx), "Detection Mismatch! Number of detections for previous and current graph are not identical"
+        box_i:Box = previous_mot_graph.graph_dataframe["boxes_list_all"][old_node_idx[0]]
+        box_j:Box = new_mot_graph.graph_dataframe["boxes_list_all"][new_node_idx[0]]
+        assert box_i == box_j
         
         # Assign global tracking_ids
-        changed_local_tracking_ids = []
+        t_old_local_tracking_ids:torch.IntTensor = previous_mot_graph.graph_obj.tracking_IDs
+        old_local_tracking_ids:List[int] = t_old_local_tracking_ids.tolist()
+        t_new_local_tracking_ids:torch.IntTensor = new_mot_graph.graph_obj.tracking_IDs
+        new_local_tracking_ids:List[int] = t_new_local_tracking_ids.tolist()
+
+        changed_local_tracking_ids:List[int] = []
         for i in range(len(old_node_idx)):
             old_node_id = old_node_idx[i]
             new_node_id = new_node_idx[i]
-            old_local_tracking_id = previous_mot_graph.graph_obj.tracking_IDs
-            new_local_tracking_id = new_mot_graph.graph_obj.tracking_IDs
-            global_tracking_id = previous_tracking_id_dict[old_local_tracking_id]
+            # Get old local tracking Id 
+            old_local_tracking_id:int = old_local_tracking_ids[old_node_id]
+            # Get current local tracking Id
+            new_local_tracking_id:int = new_local_tracking_ids[new_node_id]
+            # Get global tracking Id and update new tracking dict with it
+            global_tracking_id:int = previous_tracking_id_dict[old_local_tracking_id]
             new_tracking_id_dict[new_local_tracking_id] = global_tracking_id
             
             changed_local_tracking_ids.append(new_local_tracking_id)
 
         # Update global_tracking_dict. 
         # Add the new global tracking ids for new tracks initialized in new_mot_graph 
-        unchanged_local_tracking_ids :List[torch.Tensor] = [new_local_tracking_id 
+        unchanged_local_tracking_ids :List[int] = [new_local_tracking_id 
                                 for new_local_tracking_id in new_tracking_id_dict
                                     if  new_local_tracking_id not in changed_local_tracking_ids]
 
@@ -218,8 +234,7 @@ class NuscenesMPNTracker(MPNTracker):
         frames_per_graph = dataset.dataset_params['max_frame_dist']
         filtered_list_scene_sample_tuple = dataset.get_filtered_samples_from_one_scene(scene_token)
         all_available_samples = get_all_samples_from_scene(scene_token, dataset.nuscenes_handle )
-        # edge_predictions = {}
-        # graphs = {}
+
         current_sample_token = scene_table['first_sample_token']
         previous_mot_graph:NuscenesMotGraph = None
         previous_tracking_dict = {}
@@ -237,7 +252,6 @@ class NuscenesMPNTracker(MPNTracker):
                     # if true we can concatenate it with the last available frame
                     _, last_sample_token = filtered_list_scene_sample_tuple[-1]
                     last_mot_graph = self._load_and_infere_mot_graph(scene_token , last_sample_token)
-                    
                     last_tracking_ID_dict = self._perform_tracking_for_mot_graph( last_mot_graph )
                     # Concatenate
                     #TODO
@@ -245,58 +259,87 @@ class NuscenesMPNTracker(MPNTracker):
                                             previous_tracking_dict,
                                             last_tracking_ID_dict, global_tracking_dict,
                                             current_sample_token)
-                    # assign last sample_token. Should be the same as last frame of scene
-                    next_sample_token = last_mot_graph.graph_dataframe['available_sample_tokens'][-1]
+                    # Add Tracked boxes except the ones from current sample token
+                    start_concat_sample_token = skip_sample_token(current_sample_token,0, dataset.nuscenes_handle)
                     self._add_tracked_boxes_to_submission(submission,
                                                             last_mot_graph,
                                                             last_tracking_ID_dict,
-                                                            current_sample_token)
+                                                            start_concat_sample_token)
+                    ##########################
+                    # Assign last sample_token. Should be the same as last frame of scene
+                    next_sample_token = last_mot_graph.graph_dataframe['available_sample_tokens'][-1]
+                    ###########################
+                    # Assign previous variables
+                    previous_mot_graph = last_mot_graph
+                    previous_tracking_dict = last_tracking_ID_dict
+
                 else:
                     add_results_to_submit(submission ,frame_token= current_sample_token, predicted_instance_dicts=[])
+                    ##########################
+                    # Go to next sample_token
                     next_sample_token = skip_sample_token(current_sample_token,0, dataset.nuscenes_handle)
-
+                    ###########################
+                    # Delete previous variables
+                    previous_mot_graph = None
+                    previous_tracking_dict = None
             else:
                 ##############################################################################
                 # Perform tracking on mot-graph for the next #frames_per_graph frames
                 # Returns Tracking Ids and tracking_id_dict
                 
                 # Load the graph corresponding to the entire subsequence
-                mot_graph = self._load_and_infere_mot_graph(scene_token ,current_sample_token)
+                current_mot_graph = self._load_and_infere_mot_graph(scene_token ,current_sample_token)
 
-                tracking_ID_dict = self._perform_tracking_for_mot_graph(mot_graph)
+                current_tracking_ID_dict = self._perform_tracking_for_mot_graph(current_mot_graph)
 
-                last_sample_token = mot_graph.graph_dataframe['available_sample_tokens'][-1]
                 ##############################################################################
                 # Concatenate with previous Update new tracking dict
                 if ( (previous_mot_graph is not None) 
-                    and last_sample_token in previous_mot_graph.graph_dataframe['available_sample_tokens']):
+                    and current_sample_token in previous_mot_graph.graph_dataframe['available_sample_tokens']):
+
+                    # Token where previous and current graphs are supposed to be concatenated
+                    previous_last_sample_token = previous_mot_graph.graph_dataframe['available_sample_tokens'][-1]
+                    assert current_sample_token == previous_last_sample_token, \
+                                        "Timeframe Mismatch! Last sample token from previous graph \
+                                        and first sample token from current graph are not identical!" 
                     # Concatenate
                     # Update Dictionaries
                     #TODO
-                    self._assign_global_tracking_ids(previous_mot_graph, mot_graph, 
-                                                    previous_tracking_dict, tracking_ID_dict,
+                    concatenation_token = current_sample_token
+                    self._assign_global_tracking_ids(previous_mot_graph, current_mot_graph, 
+                                                    previous_tracking_dict, current_tracking_ID_dict,
                                                     global_tracking_dict,
-                                                    last_sample_token)
+                                                    concatenation_token)
+
+                    # Add tracked boxes to summary
+                    # Add Tracked boxes except the ones from current sample token
+                    start_concat_sample_token = skip_sample_token(current_sample_token,0, dataset.nuscenes_handle)
+                    self._add_tracked_boxes_to_submission(submission, current_mot_graph,
+                                                            current_tracking_ID_dict,
+                                                            starting_sample_token = start_concat_sample_token)
                     
                 # If there is not any previous mot_graph or the previous went out of scope for the current graph-"window"
                 # open new tracks
                 else:
                     #TODO
-                    selected_local_tracking_ids = [ local_tracking_id for local_tracking_id in tracking_ID_dict]
-                    self._init_new_global_tracks(global_tracking_dict, tracking_ID_dict, 
+                    selected_local_tracking_ids = [ local_tracking_id for local_tracking_id in current_tracking_ID_dict]
+                    self._init_new_global_tracks(global_tracking_dict, current_tracking_ID_dict, 
                                                     selected_local_tracking_ids, current_sample_token)
 
-                # Add tracked boxes to summary
-                self._add_tracked_boxes_to_submission(submission, mot_graph,
-                                                        tracking_ID_dict)
+                    # Add tracked boxes to summary
+                    self._add_tracked_boxes_to_submission(submission, current_mot_graph,
+                                                            current_tracking_ID_dict)
+                
                 ##############################################################################
                 # Save new_tracking_dict as old_tracking_dict and new_mot_graph as old_mot_graph
-                previous_mot_graph = mot_graph
-                previous_tracking_dict = tracking_ID_dict
+                previous_mot_graph = current_mot_graph
+                previous_tracking_dict = current_tracking_ID_dict
 
                 ##############################################################################
                 # Go to next sample_token 
-                next_sample_token = skip_sample_token(current_sample_token,0, dataset.nuscenes_handle)
+                next_sample_token = skip_sample_token(current_sample_token,
+                                                    frames_per_graph - 2, 
+                                                    dataset.nuscenes_handle)
 
             # Assign new current_sample_token
             current_sample_token = next_sample_token
