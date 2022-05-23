@@ -2,6 +2,8 @@ from typing import List
 import numpy as np
 import torch
 import sys
+
+from torchmetrics import BLEUScore
 # sys.path.append("datasets")
 # import datasets.NuscenesDataset
 from datasets.NuscenesDataset import NuscenesDataset
@@ -10,7 +12,14 @@ from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 
 import open3d as o3d
 from open3d import geometry
-
+BLACK = np.array([0,0,0])
+LIGHTGREY = np.array([1,1,1]) * 0.75
+GREY = np.array([1,1,1]) * 0.5
+GREEN = np.array([0, 1, 0])
+RED = np.array([1, 0, 0])
+BLUE = np.array([0, 0, 1])
+WHITE = np.asarray([1,1,1])
+YELLOW = (RED + GREEN)/np.linalg.norm((RED + GREEN))
 def prepare_single_color_array(color:np.ndarray, array_length:int) -> np.ndarray:
     
     if color is None:
@@ -51,7 +60,7 @@ def add_line_set(nodes:torch.Tensor, edge_indices: torch.Tensor,color:np.ndarray
     '''
     line_set_sequences = []
 
-    colors = prepare_single_color_array(color, edge_indices.shape[1] )
+    colors: np.ndarray = prepare_single_color_array(color, edge_indices.shape[1] )
 
     # make sure that edge_labels has same length as edge indices
     assert len(colors) == edge_indices.shape[1]
@@ -72,7 +81,9 @@ def add_line_set(nodes:torch.Tensor, edge_indices: torch.Tensor,color:np.ndarray
     line_set_sequences.append(line_set) 
     return line_set_sequences
 
-def add_line_set_labeled(nodes:torch.Tensor, edge_indices: torch.Tensor,edge_labels: torch.Tensor):
+def add_line_set_labeled(nodes:torch.Tensor, edge_indices: torch.Tensor,edge_labels: torch.Tensor,
+                        true_color: np.ndarray = GREEN,
+                        false_color: np.ndarray = GREY):
     '''
     nodes.shape = (N, 3) only xyz values 
     edge_indices.shape = (2, E)
@@ -84,17 +95,18 @@ def add_line_set_labeled(nodes:torch.Tensor, edge_indices: torch.Tensor,edge_lab
     colors = []
     for edge_label in edge_labels:
         if edge_label == 0:
-            colors.append([1, 0, 0])
+            colors.append(false_color)
         else:
-            colors.append([0, 1, 0])
-
+            colors.append(true_color)
+    colors: np.ndarray = np.stack(colors)
+    
     # make sure that edge_labels has same length as edge indices
     assert len(colors) == edge_indices.shape[1]
 
     # #Transport onto CPU and Transform into numpy array
     # Vector3dVector only takes in up to 3 dimensions. Get only xyz from node_features
-    np_nodes = nodes.cpu().numpy().reshape(-1, 3)
-    np_edge_indices = edge_indices.cpu().numpy().reshape(2, -1)
+    np_nodes: np.ndarray = nodes.cpu().numpy().reshape(-1, 3)
+    np_edge_indices: np.ndarray = edge_indices.cpu().numpy().reshape(2, -1)
     np_edge_indices.astype(np.int32) #Vector2iVector takes in int32 type
     # Transpose if Graph connectivity in COO format with shape :obj:`[2, num_edges]
     if np_edge_indices.shape[0] == 2:
@@ -166,7 +178,7 @@ def visualize_input_graph(mot_graph:NuscenesMotGraph):
 
 def visualize_eval_graph(mot_graph:NuscenesMotGraph):
     geometry_list = []
-
+    edge_indices = mot_graph.graph_obj.edge_index
     #----------------------------------------
     # Include reference frame
     mesh_frame = geometry.TriangleMesh.create_coordinate_frame(
@@ -178,12 +190,48 @@ def visualize_eval_graph(mot_graph:NuscenesMotGraph):
     point_sequence = add_pointcloud(mot_graph.graph_obj.x[:,:3],
                                     color= None)
     geometry_list += point_sequence
+
+    # Basic graph
+
+    # line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
+    #                                 edge_indices= edge_indices,
+    #                                 color = LIGHTGREY*0.1
+    #                                 )
+    # geometry_list += line_set_sequence
+
     #----------------------------------------
     # Active and inactive Edges
-    line_set_sequence = add_line_set_labeled(nodes= mot_graph.graph_obj.x[:,:3],
-                                    edge_indices= mot_graph.graph_obj.edge_index,
-                                    edge_labels= mot_graph.graph_obj.active_edges)
+
+    # active_edges:torch.Tensor = mot_graph.graph_obj.active_edges
+    # only_active_edges_indices =  edge_indices[:,active_edges]
+    # line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
+    #                                 edge_indices= only_active_edges_indices,
+    #                                 color = BLUE
+    #                                 )
+    # geometry_list += line_set_sequence
+
+    #----------------------------------------
+    # Get correct predictions
+    active_edges:torch.Tensor = mot_graph.graph_obj.active_edges
+    only_active_edges_indices =  edge_indices[:,active_edges]
+    edge_labels_for_active_edges = mot_graph.graph_obj.edge_labels[active_edges]
+    correct_predictions_edge_indices = only_active_edges_indices[:,edge_labels_for_active_edges >=1]
+
+    line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
+                                    edge_indices= correct_predictions_edge_indices,
+                                    color = YELLOW
+                                    )
     geometry_list += line_set_sequence
+    
+    #----------------------------------------
+    # GT 
+    # line_set_sequence = add_line_set_labeled(nodes= mot_graph.graph_obj.x[:,:3],
+    #                                 edge_indices= edge_indices,
+    #                                 edge_labels= mot_graph.graph_obj.edge_labels,
+    #                                 true_color= GREEN * 0.5,
+    #                                 false_color=LIGHTGREY )
+
+    # geometry_list += line_set_sequence
     #----------------------------------------
 
     return geometry_list

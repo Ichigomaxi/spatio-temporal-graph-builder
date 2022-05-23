@@ -14,7 +14,7 @@ if __name__ == "__main__":
     
     # load mot graphs from pickle file
     dirpath = r"C:\Users\maxil\Documents\projects\master_thesis\nuscenes_tracking_results"
-    file_name = r"05-17_19_30_evaluation_single_graphs\inferred_mot_graphs.pkl"
+    file_name = r"05-23_18_06_evaluation_single_graphs\inferred_mot_graphs.pkl"
 
     file_path = osp.join(dirpath,file_name)
 
