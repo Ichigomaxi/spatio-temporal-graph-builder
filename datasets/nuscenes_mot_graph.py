@@ -1,4 +1,5 @@
 # from ctypes import Union
+from pickle import TRUE
 from turtle import shape
 from typing import Dict, List, Union
 from matplotlib.style import available
@@ -496,7 +497,7 @@ class NuscenesMotGraph(object):
         """
         transformed_translation: List[float] = None
         transformed_rotation: Quaternion = None
-        
+
         sample = self.nuscenes_handle.get('sample', sample_token)
         # get Sample Data token
         ref_channel = 'LIDAR_TOP'
@@ -505,6 +506,7 @@ class NuscenesMotGraph(object):
         ref_sd_record = self.nuscenes_handle.get('sample_data', ref_sd_token)
         ref_pose_record = self.nuscenes_handle.get('ego_pose', ref_sd_record['ego_pose_token'])
 
+        # TODO transformation
         # Homogeneous transformation matrix from global to _current_ ego car frame.
         global_from_ego = transform_matrix(ref_pose_record['translation'], Quaternion(ref_pose_record['rotation']),
                                         inverse=False)
@@ -521,7 +523,8 @@ class NuscenesMotGraph(object):
             sample_annotation = self.nuscenes_handle.get('sample_annotation', sample_annotation_token)
             translation_world_frame = sample_annotation["translation"]
             rotation_world_frame = sample_annotation["rotation"]
-            assert 
+            #TODO Assertion
+            assert True
         # Fuse four transformation matrices into one and perform transform.
         # trans_matrix = reduce(np.dot, [ref_from_car, car_from_global, global_from_car, car_from_current])
         # current_pc.transform(trans_matrix)
