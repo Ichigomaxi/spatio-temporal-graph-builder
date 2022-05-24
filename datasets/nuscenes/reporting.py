@@ -56,7 +56,8 @@ def build_results_dict(frame_token: str,
 def add_results_to_submit( submission: Dict[str, Dict[str, Any]], 
                             frame_token: str,
                             predicted_instance_dicts: Iterable[Dict[str, Any]] ) -> None:
-    assert frame_token not in submission["results"], "This Frame has already been added to the submission!: \n{}".format( submission["results"][frame_token])
+    assert frame_token not in submission["results"], \
+        "This Frame has already been added to the submission!: \n{}".format( submission["results"][frame_token])
     submission["results"][frame_token] = []
 
     for instance_dict in predicted_instance_dicts:
@@ -72,3 +73,5 @@ def save_to_json_file(submission: Dict[str, Dict[str, Any]],
     results_file = os.path.join(folder_name, (version + "_tracking.json"))
     with open(results_file, 'w') as f:
         json.dump(submission, f, indent=4)
+    
+    return results_file

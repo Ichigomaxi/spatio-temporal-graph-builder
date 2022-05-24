@@ -3,7 +3,7 @@ Taken and adapted from https://github.com/aleksandrkim61/EagerMOT
 Check out the corresponding Paper https://arxiv.org/abs/2104.14682
 This is serves as inspiration for our own code
 '''
-from typing import  Any, Dict, Iterable, List
+from typing import  Any, Dict, Iterable, List, Set
 from matplotlib.style import available
 import numpy as np
 
@@ -124,6 +124,10 @@ class NuscenesMPNTracker(MPNTracker):
         else:
             new_tracking_IDs:List[int] = selected_local_tracking_ids
         # Update global dictionary
+        if not isinstance(new_tracking_IDs, list):
+            print("TYPE:",type(new_tracking_IDs))
+            new_tracking_IDs = [new_tracking_IDs]
+        assert isinstance(new_tracking_IDs, list), "new_tracking_IDs is not a list!!\n It is {}".format(new_tracking_IDs)
         self._update_global_tracking_dict(new_tracking_IDs, global_tracking_dict, sample_token)
         # Update new_tracking_dict
         for i, local_tracking_id in enumerate(selected_local_tracking_ids):
@@ -231,7 +235,7 @@ class NuscenesMPNTracker(MPNTracker):
         print(f"Processing Seq {seq_name}")
 
         dataset:NuscenesMOTGraphDataset = self.dataset
-        frames_per_graph = dataset.dataset_params['max_frame_dist']
+        frames_per_graph:int = dataset.dataset_params['max_frame_dist']
         filtered_list_scene_sample_tuple = dataset.get_filtered_samples_from_one_scene(scene_token)
         all_available_samples = get_all_samples_from_scene(scene_token, dataset.nuscenes_handle )
 
@@ -239,6 +243,7 @@ class NuscenesMPNTracker(MPNTracker):
         previous_mot_graph:NuscenesMotGraph = None
         previous_tracking_dict = {}
         global_tracking_dict: Dict[int:str] = {}
+        potentially_missed_sample_token:Set[str] = set([])
         while (current_sample_token != scene_table['last_sample_token']):
             t = time()
             ##############################################################################
@@ -248,7 +253,7 @@ class NuscenesMPNTracker(MPNTracker):
 
                 ##############################################################################
                 # check if current sample_token is within the last #frames_per_graph frames
-                if (current_sample_token in [all_available_samples[-frames_per_graph:]]):
+                if (current_sample_token in all_available_samples[-frames_per_graph:]):
                     # if true we can concatenate it with the last available frame
                     _, last_sample_token = filtered_list_scene_sample_tuple[-1]
                     last_mot_graph = self._load_and_infere_mot_graph(scene_token , last_sample_token)
@@ -274,7 +279,12 @@ class NuscenesMPNTracker(MPNTracker):
                     previous_tracking_dict = last_tracking_ID_dict
 
                 else:
-                    add_results_to_submit(submission ,frame_token= current_sample_token, predicted_instance_dicts=[])
+                    # log potentially missed sample_tokens
+                    sample_token = current_sample_token
+                    for i in range(frames_per_graph):
+                        potentially_missed_sample_token.update({sample_token})
+                        sample_token = skip_sample_token(sample_token,0, dataset.nuscenes_handle)
+                    # add_results_to_submit(submission ,frame_token= current_sample_token, predicted_instance_dicts=[])
                     ##########################
                     # Go to next sample_token
                     next_sample_token = skip_sample_token(current_sample_token,0, dataset.nuscenes_handle)
@@ -346,3 +356,7 @@ class NuscenesMPNTracker(MPNTracker):
             # print Information
             print("Max Mem allocated:", torch.cuda.max_memory_allocated(torch.device(self.dataset.device))/1e9)
             print(f"Done with Sequence chunk, it took {time()-t}")
+        
+        ##########################################
+        # Complement Submission with missing sample_tokens 
+        # add empty lists to submission

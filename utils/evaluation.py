@@ -67,7 +67,6 @@ def get_node_indices_from_timeframe_i(timeframe_numbers:torch.Tensor, timeframe:
     return node_idx_from_frame_i
 
 def filter_out_spatial_edges(incoming_edge_idx:torch.Tensor, 
-                                current_timeframe:int, frames_per_graph:int,
                                 graph_obj:Graph):
     """
     incoming_edge_idx : torch.tensor, shape(num_incoming_edges), describes the indices of the list of edges. 
@@ -79,35 +78,52 @@ def filter_out_spatial_edges(incoming_edge_idx:torch.Tensor,
     spatial_edges_mask = ~temporal_edges_mask
     spatial_edge_idx:torch.Tensor = graph_obj.edge_index[:,spatial_edges_mask[:,0]] #
     
-    incoming_edges = graph_obj.edge_index[:,incoming_edge_idx]
-    target_node_id = incoming_edges[1,0]
+    incoming_edges:torch.Tensor = graph_obj.edge_index[:,incoming_edge_idx]
+    target_node_id:torch.Tensor = incoming_edges[1,0]
     assert (target_node_id == incoming_edges[1]).all()
 
     spatial_rows, spatial_columns = spatial_edge_idx[0], spatial_edge_idx[1]
-    spatial_target_node_id_mask = spatial_columns == target_node_id 
-    spatial_source_node_id_mask = spatial_rows[spatial_target_node_id_mask] # These source_nodes must leave
-
+    spatial_target_node_id_mask:torch.Tensor = spatial_columns == target_node_id 
+    spatial_source_node_ids:torch.Tensor = spatial_rows[spatial_target_node_id_mask] # These source_nodes must leave
+    unnecessary_spatial_edges:torch.Tensor = spatial_edge_idx[:,spatial_target_node_id_mask]
     # current_nodes_from_frame_i_mask = graph_obj.timeframe_number == current_timeframe
 
-    for incoming_edge_index in incoming_edge_idx:
-        incoming_edge_indices = graph_obj.edge_index[:,incoming_edge_index]
-        if incoming_edge_indices[0] not in spatial_source_node_id_mask:
-            incoming_edge_idx_without_spatial_connections.append(incoming_edge_index)
-    
-    if incoming_edge_idx_without_spatial_connections:
-        incoming_edge_idx_without_spatial_connections = torch.stack(incoming_edge_idx_without_spatial_connections)
-    else:
-        incoming_edge_idx_without_spatial_connections = incoming_edge_idx
+    # Get only the temporal edges
+    # elementwise Comparison of 2 vectors 
+    incoming_rows = incoming_edges[0].unsqueeze(dim = 1) # give extra dimension to make it broadcastable
+    mask_2d_comparison = (spatial_source_node_ids == incoming_rows) # shape = [num_incoming_rows, num_spatial_source_nodes]
+    mask4_spatial_incoming_rows = (mask_2d_comparison).sum(dim=1) >= 1 # dim = 1 to identify incoming_rows that to spatial edges
+    mask4_temporal_incoming_rows = ~mask4_spatial_incoming_rows # identify incoming_rows that to temporal edges
+    incoming_edges_without_spatial_connections = incoming_edges[:, mask4_temporal_incoming_rows]
 
-    incoming_edges_without_spatial_connections = graph_obj.edge_index[:,incoming_edge_idx_without_spatial_connections] #
+    # Retrieve the corresponding edge_indes from graph_obj.edge_index
+    incoming_edge_idx_without_spatial_connections = incoming_edge_idx[mask4_temporal_incoming_rows]
+    test_bool_tensor: torch.BoolTensor = graph_obj.edge_index[:,incoming_edge_idx_without_spatial_connections]\
+                            == incoming_edges_without_spatial_connections
+    assert test_bool_tensor.all()
+    # for incoming_edge_index in incoming_edge_idx:
+    #     incoming_edge_indices = graph_obj.edge_index[:,incoming_edge_index]
+    #     if incoming_edge_indices[0] not in spatial_source_node_ids:
+    #         incoming_edge_idx_without_spatial_connections.append(incoming_edge_index)
+    
+    # if incoming_edge_idx_without_spatial_connections:
+    #     incoming_edge_idx_without_spatial_connections = torch.stack(incoming_edge_idx_without_spatial_connections)
+    # else:
+    #     incoming_edge_idx_without_spatial_connections = incoming_edge_idx
+    # incoming_edges_without_spatial_connections = graph_obj.edge_index[:,incoming_edge_idx_without_spatial_connections] #
+
     source_node_ids = incoming_edges_without_spatial_connections[0]
     timeframe_number = graph_obj.timeframe_number
     source_node_times = timeframe_number[source_node_ids]
     target_node_time = timeframe_number[target_node_id]
-    if (target_node_time == source_node_times).all():
-        print("not possible")
-    assert (target_node_time != source_node_times).all()
-
+    
+    if not len(incoming_edge_idx_without_spatial_connections) > 0:
+        print("Found a node without any temporal connections! ")
+        assert incoming_edge_idx_without_spatial_connections.shape[0] == 0
+    else:
+        if (target_node_time == source_node_times).all() and len(source_node_times) > 0:
+            print("not possible")
+        assert (target_node_time != source_node_times).all()
     
     return incoming_edge_idx_without_spatial_connections
 
@@ -199,8 +215,20 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph):
             rows, columns = edge_indices[0],edge_indices[1] # COO-format
             edge_mask:torch.Tensor = torch.eq(columns, node_id)
             incoming_edge_idx = edge_mask.nonzero().squeeze()
-            incoming_edge_idx= filter_out_spatial_edges(incoming_edge_idx, i, mot_graph.max_frame_dist, mot_graph.graph_obj)
+            incoming_edge_idx= filter_out_spatial_edges(incoming_edge_idx, mot_graph.graph_obj)
+            if incoming_edge_idx.shape[0] == 0:
+                # Found a node without temporal edges
+                # cannot assign any active connections to it 
+                # it will be considered as a node without any active connections and therefore will be assigned a new trackId
+                # continue with next node
+                continue
             incoming_edge_idx = filter_for_past_edges(incoming_edge_idx, i, mot_graph.max_frame_dist, mot_graph.graph_obj)
+            if incoming_edge_idx.shape[0] == 0:
+                # Found a node without temporal edges from the past
+                # cannot assign any active connections to it 
+                # it will be considered as a node without any active connections and therefore will be assigned a new trackId
+                # continue with next node
+                continue
             # Get edge predictions and provide the active neighbor and its tracking confindence
             incoming_edge_predictions = edge_preds[incoming_edge_idx]
             probabilities = functional.softmax(incoming_edge_predictions, dim=0 )
@@ -319,8 +347,8 @@ def assign_track_ids(graph_object:Graph, frames_per_graph:int, nuscenes_handle:N
     tracking_IDs:torch.Tensor = torch.ones(graph_object.x.shape[0], dtype=common_tracking_dtype).to(device)
     tracking_IDs =  tracking_IDs * UNTRACKED_ID
 
-    tracking_confidence_by_node_id:torch.Tensor = torch.zeros(graph_object.x.shape[0],dtype=torch.float32).to(device)
-
+    # tracking_confidence_by_node_id:torch.Tensor = torch.zeros(graph_object.x.shape[0],dtype=torch.float32).to(device)
+    tracking_confidence_by_node_id:torch.Tensor = torch.ones(graph_object.x.shape[0],dtype=torch.float32).to(device)
     tracking_ID_dict: Dict[int, int]= {}
 
     edge_indices = graph_object.edge_index
@@ -352,12 +380,23 @@ def assign_track_ids(graph_object:Graph, frames_per_graph:int, nuscenes_handle:N
                 rows, columns = edge_indices[0],edge_indices[1] # COO-format
                 edge_mask:torch.Tensor = torch.eq(columns, target_node_id)
                 incoming_edge_idx_past_and_future = edge_mask.nonzero().squeeze()
-                incoming_edge_idx_past = filter_for_past_edges(incoming_edge_idx_past_and_future, timeframe, frames_per_graph, graph_object)
+                temporal_incoming_edge_idx = filter_out_spatial_edges(incoming_edge_idx_past_and_future, graph_object)
+                if temporal_incoming_edge_idx.shape[0] == 0:
+                    # Found a node without temporal edges
+                    # it will be considered as a node without any active connections and therefore will be assigned a new trackId
+                    # continue with next node
+                    print("Found node without temporal edges!")
+                    
+                    assert graph_object.active_edges[temporal_incoming_edge_idx].any() == False
+                incoming_edge_idx_past = filter_for_past_edges(temporal_incoming_edge_idx, 
+                                                                timeframe, frames_per_graph, graph_object)
 
                 current_active_edges = graph_object.active_edges[incoming_edge_idx_past]
+
                 #### DEBUGGING ###########
                 timeframes:torch.Tensor = graph_object.timeframe_number
-        
+                ###################
+
                 # check if active edge available
                 if current_active_edges.any():
                     assert current_active_edges.sum(dim=0) == 1
@@ -366,6 +405,7 @@ def assign_track_ids(graph_object:Graph, frames_per_graph:int, nuscenes_handle:N
                     active_edge_id = incoming_edge_idx_past[current_active_edges]
                     # active_edge_id = incoming_edge_idx_past_and_future[active_edge_id_local]
                     source_node_id =  rows[active_edge_id]
+
                     #### DEBUGGING #######
                     source_node_time = timeframes[source_node_id]
                     target_node_time = timeframes[target_node_id]
@@ -497,6 +537,8 @@ def add_tracked_boxes_to_submission(submission: Dict[str, Dict[str, Any]],
 
     for node_id in selected_node_idx:
         box:Box = mot_graph.graph_dataframe["boxes_list_all"][node_id]
+
+        mot_graph.transform_box_lidar2world_frame(box)
         # sample_token: str
         # translation: Tuple[float, float, float] = (0, 0, 0),
         # size: Tuple[float, float, float] = (0, 0, 0),

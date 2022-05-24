@@ -278,17 +278,17 @@ class MOTNeuralSolver(pl.LightningModule):
             assign_definitive_connections(mot_graph)
             
             # # Assign Tracks
-            # tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id = assign_track_ids(mot_graph.graph_obj, 
-            #             frames_per_graph = mot_graph.max_frame_dist, 
-            #             nuscenes_handle = dataset.nuscenes_handle)
-            # mot_graph.graph_obj.tracking_IDs = tracking_IDs
-            # mot_graph.graph_obj.tracking_confidence_by_node_id = tracking_confidence_by_node_id
+            tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id = assign_track_ids(mot_graph.graph_obj, 
+                        frames_per_graph = mot_graph.max_frame_dist, 
+                        nuscenes_handle = dataset.nuscenes_handle)
+            mot_graph.graph_obj.tracking_IDs = tracking_IDs
+            mot_graph.graph_obj.tracking_confidence_by_node_id = tracking_confidence_by_node_id
 
             # # Prepare submission dict
             summary = {}
             summary = prepare_for_submission(summary)
             # # Build TrackingBox List for evaluation
-            # summary = add_tracked_boxes_to_submission(summary, mot_graph = mot_graph)
+            summary = add_tracked_boxes_to_submission(summary, mot_graph = mot_graph)
             
             if(self.hparams['eval_params']['visualize_graph']):
                 geometry_list = visualize_eval_graph(mot_graph)
@@ -356,7 +356,7 @@ class MOTNeuralSolver(pl.LightningModule):
 
         if (self.hparams['eval_params']['save_submission']):
             os.makedirs(output_files_dir, exist_ok=True) # Make sure dir exists
-            save_to_json_file(summary, folder_name= output_files_dir , 
+            results_file = save_to_json_file(summary, folder_name= output_files_dir , 
                     version= self.hparams['test_dataset_mode'] )
         
-        return summary
+        return summary, results_file

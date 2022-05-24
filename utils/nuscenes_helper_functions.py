@@ -121,7 +121,9 @@ def skip_sample_token(sample_token:str, num_skip:int ,nuscenes_handle:NuScenes):
     next_sample_token = sample_token
     for i in range(num_skip + 1):
         sample = nuscenes_handle.get('sample',next_sample_token)
-        next_sample_token = sample['next']
+        # only return sample_token until the end of the sequence/scene
+        if(sample['next'] != ''): 
+            next_sample_token = sample['next']
     return next_sample_token
 
 def get_all_samples_from_scene(scene_token:str,

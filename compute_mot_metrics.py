@@ -10,7 +10,7 @@ with open(config_path, 'r') as _f:
             cfg_ = TrackingConfig.deserialize(json.load(_f))
 # TRACKING_NAMES = cfg_.tracking_names
 
-result_path_ = "/media/HDD2/students/maximilian/spatio-temporal-gnn/evalutation_single_graphs/05-19_17:46_evaluation_single_graphs/0/mini_val_tracking.json"
+result_path_ = "/media/HDD2/students/maximilian/spatio-temporal-gnn/experiments/05-24_12:37_evaluation/mot_metrics/mini_val_tracking.json"
 
 eval_set_ = "mini_val"
 
