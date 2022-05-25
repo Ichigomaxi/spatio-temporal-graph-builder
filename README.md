@@ -56,11 +56,11 @@ sacred                    0.8.3                    pypi_0    pypi
 pip list output:
 sacred                  0.8.3
 
-7) install motmetrics
+7) install motmetrics  <= 1.1.3
 https://github.com/cheind/py-motmetrics
 https://pypi.org/project/motmetrics/
-pip install motmetrics
-motmetrics                1.2.5                    pypi_0    pypi
+pip install motmetrics==1.1.3
+motmetrics                1.1.3                    pypi_0    pypi
 
 8) install ujson 5.3.0 
 pip install ujson

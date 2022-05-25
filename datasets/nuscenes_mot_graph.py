@@ -490,61 +490,6 @@ class NuscenesMotGraph(object):
 
         return t_node_features
 
-    def transform_box_lidar2world_frame(self, translation: List[float],orientation: Quaternion , sample_token:str, sample_annotation_token:str= None):
-        """
-        Returns and transforms given translation and rotation from LIDAR_TOP frame into World frame
-        If sample_annotation is given a assertion test can be done. However it is not necessary
-        """
-        transformed_translation: List[float] = None
-        transformed_rotation: Quaternion = None
-
-        sample = self.nuscenes_handle.get('sample', sample_token)
-        # get Sample Data token
-        ref_channel = 'LIDAR_TOP'
-        ref_sd_token = sample['data'][ref_channel]
-        # Get ego pose table
-        ref_sd_record = self.nuscenes_handle.get('sample_data', ref_sd_token)
-        ref_pose_record = self.nuscenes_handle.get('ego_pose', ref_sd_record['ego_pose_token'])
-
-        # TODO transformation
-        # Homogeneous transformation matrix from global to _current_ ego car frame.
-        global_from_ego = transform_matrix(ref_pose_record['translation'], Quaternion(ref_pose_record['rotation']),
-                                        inverse=False)
-        
-        # Get Calibrated Sensor table for 
-        current_cs_record = self.nuscenes_handle.get('calibrated_sensor', ref_sd_record['calibrated_sensor_token'])
-        sensor_record = self.nuscenes_handle.get('sensor', current_cs_record['sensor_token'])
-        assert ref_channel == sensor_record['channel'], "Is not the same channel! :\n Given: {} \n Expected {}".format(sensor_record, ref_channel)
-        # Homogeneous transformation matrix from sensor coordinate frame to ego car frame.
-        car_from_current = transform_matrix(current_cs_record['translation'], Quaternion(current_cs_record['rotation']),
-                                            inverse=False)
-
-        if sample_annotation_token is not None:
-            sample_annotation = self.nuscenes_handle.get('sample_annotation', sample_annotation_token)
-            translation_world_frame = sample_annotation["translation"]
-            rotation_world_frame = sample_annotation["rotation"]
-            #TODO Assertion
-            assert True
-        # Fuse four transformation matrices into one and perform transform.
-        # trans_matrix = reduce(np.dot, [ref_from_car, car_from_global, global_from_car, car_from_current])
-        # current_pc.transform(trans_matrix)
-
-        # sd_record = self.get('sample_data', ref_sd_token)
-        # cs_record = self.get('calibrated_sensor', sd_record['calibrated_sensor_token'])
-        # sensor_record = self.get('sensor', cs_record['sensor_token'])
-        # pose_record = self.get('ego_pose', sd_record['ego_pose_token'])
-
-        # #  Move box to ego vehicle coord system.
-        # transformed_box.translate(np.array(cs_record['translation']))
-        # transformed_box.rotate(Quaternion(cs_record['rotation']))
-
-        # # Move box to world coord system.
-        # transformed_box.translate(np.array(pose_record['translation']))
-        # transformed_box.rotate(Quaternion(pose_record['rotation']))
-
-        
-        return transformed_translation, transformed_rotation
-
     def construct_graph_object(self,node_feature_mode="centers_and_time", edge_feature_mode="edge_type"):
         """
         Constructs the entire Graph object to serve as input to the MPN, and stores it in self.graph_obj,

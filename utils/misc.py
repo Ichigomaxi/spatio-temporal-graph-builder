@@ -8,11 +8,14 @@ import os.path as osp
 import pickle
 import random
 from datetime import datetime
+from typing import Any, Dict
 
 import numpy as np
 import torch
+import yaml
 #from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 from pytorch_lightning import Callback
+from pytorch_lightning.core.saving import save_hparams_to_yaml
 
 from utils.path_cfg import OUTPUT_PATH
 
@@ -57,6 +60,23 @@ def get_run_str_and_save_dir(run_id, cross_val_split, add_date):
     assert not osp.exists(save_dir), unique_id_assert
 
     return run_str, save_dir
+
+def save_model_hparams_and_sacred_config(out_files_dir:str, hparams:Dict[str,Any],_config:Dict[str,Any]):
+    save_model_hparams(out_files_dir, hparams)
+    save_sacred_config(out_files_dir, _config)
+
+def save_sacred_config(out_files_dir:str,_config:Dict[str,Any]):
+    os.makedirs(out_files_dir, exist_ok=True) # Make sure dir exists
+    file_path = f"{out_files_dir}/config.yaml"
+    print(f"Saving sacred config to file_path: {file_path}")
+    with open(file_path, 'w') as file:
+        documents = yaml.dump(_config, file)
+
+def save_model_hparams(out_files_dir:str, hparams:Dict[str,Any]):
+    os.makedirs(out_files_dir, exist_ok=True) # Make sure dir exists
+    file_path = f"{out_files_dir}/hparams.yaml"
+    print(f"Saving hparams to file_path: {file_path}")
+    save_hparams_to_yaml(config_yaml=file_path, hparams=hparams)
 
 class ModelCheckpoint(Callback):
     """

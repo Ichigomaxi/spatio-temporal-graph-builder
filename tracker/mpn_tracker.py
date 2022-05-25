@@ -206,7 +206,8 @@ class NuscenesMPNTracker(MPNTracker):
                                         mot_graph:NuscenesMotGraph,
                                         local2global_tracking_id_dict:Dict[torch.Tensor,torch.Tensor],
                                         starting_sample_token:str = None,
-                                        ending_sample_token:str = None):
+                                        ending_sample_token:str = None,
+                                        use_gt = False):
         '''
         '''
         assert starting_sample_token not in submission["results"], submission["results"][starting_sample_token]
@@ -216,7 +217,8 @@ class NuscenesMPNTracker(MPNTracker):
                                         mot_graph,
                                         local2global_tracking_id_dict,
                                         starting_sample_token,
-                                        ending_sample_token)
+                                        ending_sample_token,
+                                        use_gt)
 
     def track(self, scene_table:List[dict], submission: Dict[str, Dict[str, Any]]):
         """
@@ -269,7 +271,8 @@ class NuscenesMPNTracker(MPNTracker):
                     self._add_tracked_boxes_to_submission(submission,
                                                             last_mot_graph,
                                                             last_tracking_ID_dict,
-                                                            start_concat_sample_token)
+                                                            start_concat_sample_token,
+                                                            use_gt=self.use_gt)
                     ##########################
                     # Assign last sample_token. Should be the same as last frame of scene
                     next_sample_token = last_mot_graph.graph_dataframe['available_sample_tokens'][-1]
@@ -326,7 +329,8 @@ class NuscenesMPNTracker(MPNTracker):
                     start_concat_sample_token = skip_sample_token(current_sample_token,0, dataset.nuscenes_handle)
                     self._add_tracked_boxes_to_submission(submission, current_mot_graph,
                                                             current_tracking_ID_dict,
-                                                            starting_sample_token = start_concat_sample_token)
+                                                            starting_sample_token = start_concat_sample_token,
+                                                            use_gt=self.use_gt)
                     
                 # If there is not any previous mot_graph or the previous went out of scope for the current graph-"window"
                 # open new tracks
@@ -338,7 +342,8 @@ class NuscenesMPNTracker(MPNTracker):
 
                     # Add tracked boxes to summary
                     self._add_tracked_boxes_to_submission(submission, current_mot_graph,
-                                                            current_tracking_ID_dict)
+                                                            current_tracking_ID_dict,
+                                                            use_gt=self.use_gt)
                 
                 ##############################################################################
                 # Save new_tracking_dict as old_tracking_dict and new_mot_graph as old_mot_graph

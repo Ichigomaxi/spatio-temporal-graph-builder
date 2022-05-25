@@ -3,6 +3,8 @@ from nuscenes.nuscenes import NuScenes
 import numpy as np
 import torch
 from datasets.nuscenes.classes import ALL_NUSCENES_CLASS_NAMES, id_from_name
+from nuscenes.utils.geometry_utils import transform_matrix
+from pyquaternion import Quaternion
 
 def get_all_samples_2_list(nusc:NuScenes, scene_token:str) -> List[str]:
     # init List
@@ -138,3 +140,156 @@ def get_all_samples_from_scene(scene_token:str,
         samples.append(sample_token)
     assert samples[-1] == scene['last_sample_token']
     return samples
+
+def get_sample_data_table(nuscenes_handle:NuScenes,
+                                sensor_channel:str, 
+                                sample_token:str):
+    '''
+    sensor_channel :  e.g. : 'LIDAR_TOP'    
+    '''
+
+    sample = nuscenes_handle.get('sample', sample_token)
+    # get Sample Data token
+    ref_sd_token = sample['data'][sensor_channel]
+    # Get Sample Data table
+    ref_sd_record = nuscenes_handle.get('sample_data', ref_sd_token)
+
+    return ref_sd_record
+
+def get_sensor_2_ego_transformation_matrix(nuscenes_handle:NuScenes,
+                                sensor_channel:str, 
+                                sample_token:str) -> np.ndarray:
+    '''
+    sensor_channel :  e.g. : 'LIDAR_TOP'
+    '''
+
+    ref_sd_record = get_sample_data_table(nuscenes_handle, sensor_channel, sample_token)
+
+    # Get Calibrated Sensor table for 
+    current_cs_record = nuscenes_handle.get('calibrated_sensor', ref_sd_record['calibrated_sensor_token'])
+    # Get Sensor table for 
+    sensor_record = nuscenes_handle.get('sensor', current_cs_record['sensor_token'])
+
+    assert sensor_channel == sensor_record['channel'], "Is not the same channel! :\n Given: {} \n Expected {}".format(sensor_record, sensor_channel)
+    
+    # TODO transformation
+    # Homogeneous transformation matrix from sensor coordinate frame to ego car frame.
+    translation_sensor_from_ego_frame = current_cs_record['translation']
+    rotation_sensor_from_ego_frame = Quaternion(current_cs_record['rotation'])
+    sensor_2_ego_transformation_matrix = \
+            transform_matrix(translation_sensor_from_ego_frame, 
+                            rotation_sensor_from_ego_frame,
+                            inverse=True)
+
+    return sensor_2_ego_transformation_matrix
+
+def get_ego_2_world_transformation_matrix(nuscenes_handle:NuScenes,
+                                sensor_channel:str, 
+                                sample_token:str) -> np.ndarray:
+    '''
+    sensor_channel :  e.g. : 'LIDAR_TOP'
+    '''
+    # Get ego pose table
+    ref_sd_record = get_sample_data_table(nuscenes_handle, sensor_channel, sample_token)
+    ref_pose_record = nuscenes_handle.get('ego_pose', ref_sd_record['ego_pose_token'])
+
+    # TODO transformation
+    # Homogeneous transformation matrix from global to _current_ ego car frame.
+    translation_ego_from_world_frame = ref_pose_record['translation']
+    rotation_ego_from_world_frame = Quaternion(ref_pose_record['rotation'])
+    ego_2_world_transformation_matrix = \
+            transform_matrix(translation_ego_from_world_frame, 
+                rotation_ego_from_world_frame,
+                inverse=True)
+    
+    return ego_2_world_transformation_matrix
+
+def transform_detections_lidar2world_frame(nuscenes_handle:NuScenes, 
+                    translation: List[float], orientation: Quaternion , 
+                    sample_token:str, 
+                    sample_annotation_token:str= None):
+    """
+    Returns and transforms given translation and rotation from LIDAR_TOP frame into World frame
+    If sample_annotation is given a assertion test can be done. However it is not necessary
+    """
+    transformed_translation: List[float] = None
+    transformed_rotation: Quaternion = None
+
+    ref_channel = 'LIDAR_TOP'
+    lidar_2_ego_transformation_matrix:np.ndarray = get_sensor_2_ego_transformation_matrix(nuscenes_handle, ref_channel, sample_token)
+    ego_2_world_transformation_matrix:np.ndarray = get_ego_2_world_transformation_matrix(nuscenes_handle, ref_channel, sample_token)
+    
+    # Transform translation 
+    # Make homogeneous 
+    translation.append(1.0)
+    np_translation = np.asarray(translation)
+    np_transformed_translation = np_translation
+    # transform
+    # np_transformed_translation:np.ndarray = lidar_2_ego_transformation_matrix @ np_translation
+    np_transformed_translation = ego_2_world_transformation_matrix @ np_transformed_translation
+    # Make non-homogenous again
+    transformed_translation: List[float] = np_transformed_translation.tolist()
+    transformed_translation.pop()
+
+    # Transform rotation
+    lidar_2_ego_rotation_matrix = lidar_2_ego_transformation_matrix[:3, :3]
+    ego_2_world_rotation_matrix = ego_2_world_transformation_matrix[:3, :3]
+    orientation_matrix :np.ndarray = orientation.rotation_matrix
+    orientation_matrix = lidar_2_ego_rotation_matrix @ orientation_matrix
+    orientation_matrix = ego_2_world_rotation_matrix @ orientation_matrix
+    transformed_rotation:Quaternion = Quaternion(matrix=orientation_matrix)
+    # # Get Calibrated Sensor table for 
+    # current_cs_record = nuscenes_handle.get('calibrated_sensor', ref_sd_record['calibrated_sensor_token'])
+    # sensor_record = nuscenes_handle.get('sensor', current_cs_record['sensor_token'])
+    # assert ref_channel == sensor_record['channel'], "Is not the same channel! :\n Given: {} \n Expected {}".format(sensor_record, ref_channel)
+    # # Homogeneous transformation matrix from sensor coordinate frame to ego car frame.
+    # car_from_current = transform_matrix(current_cs_record['translation'], Quaternion(current_cs_record['rotation']),
+    #                                     inverse=False)
+    if sample_annotation_token is not None:
+        sample_annotation = nuscenes_handle.get('sample_annotation', sample_annotation_token)
+        translation_world_frame = sample_annotation["translation"]
+        rotation_world_frame = sample_annotation["rotation"]
+        rotation_world_frame = Quaternion(rotation_world_frame)
+        #TODO Assertion
+        assert transformed_translation == translation_world_frame
+        assert transformed_rotation == rotation_world_frame
+    # Fuse four transformation matrices into one and perform transform.
+    # trans_matrix = reduce(np.dot, [ref_from_car, car_from_global, global_from_car, car_from_current])
+    # current_pc.transform(trans_matrix)
+
+    # sd_record = self.get('sample_data', ref_sd_token)
+    # cs_record = self.get('calibrated_sensor', sd_record['calibrated_sensor_token'])
+    # sensor_record = self.get('sensor', cs_record['sensor_token'])
+    # pose_record = self.get('ego_pose', sd_record['ego_pose_token'])
+    
+    # #  Move box to ego vehicle coord system.
+    # transformed_box.translate(np.array(cs_record['translation']))
+    # transformed_box.rotate(Quaternion(cs_record['rotation']))
+
+    # # Move box to world coord system.
+    # transformed_box.translate(np.array(pose_record['translation']))
+    # transformed_box.rotate(Quaternion(pose_record['rotation']))
+
+    return transformed_translation, transformed_rotation
+
+def get_gt_sample_annotation_pose(nuscenes_handle:NuScenes,
+                    sample_annotation_token:str= None):
+    """
+    Returns translation and rotation from given sample_annotation
+    Returns:
+    translation_world_frame: List[float]
+    orientation_world_frame: Quaternion 
+    """
+    translation_world_frame: List[float] = None
+    orientation_world_frame: Quaternion = None
+
+    sample_annotation_table = nuscenes_handle.get("sample_annotation", sample_annotation_token)
+    translation: List[float] = sample_annotation_table["translation"]
+    orientation: List[float] = sample_annotation_table["rotation"]
+
+    translation_world_frame = translation
+    orientation_world_frame: Quaternion = Quaternion(orientation)
+
+    assert translation_world_frame is not None and orientation_world_frame is not None
+
+    return translation_world_frame, orientation_world_frame

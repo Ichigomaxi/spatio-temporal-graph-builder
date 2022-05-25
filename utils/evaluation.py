@@ -3,40 +3,38 @@ Taken from https://github.com/dvl-tum/mot_neural_solver
 Check out the corresponding Paper https://arxiv.org/abs/1912.07515
 This is serves as inspiration for our own code
 '''
+import json
+import os
+import os.path as osp
+import re
+from collections import OrderedDict
+from copy import deepcopy
 from tracemalloc import start
 from turtle import st
 from typing import Any, Dict, List, Tuple
+
 import numpy as np
 import pandas as pd
-
-import os
-import os.path as osp
-
-from copy import deepcopy
-from collections import OrderedDict
-
 import torch
-from torch_scatter import scatter_add
-from pytorch_lightning import Callback
-
-import re
-
-from zmq import device
+from datasets.NuscenesDataset import NuscenesDataset
+from datasets.mot_graph import Graph
+from datasets.nuscenes.classes import name_from_id
+from datasets.nuscenes.reporting import (add_results_to_submit,
+                                         build_results_dict)
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
-from datasets.mot_graph import Graph
+from nuscenes.eval.tracking.data_classes import TrackingBox, TrackingConfig
+from nuscenes.eval.tracking.evaluate import TrackingEval
+from nuscenes.nuscenes import Box, NuScenes
+from pyquaternion import Quaternion
+from pytorch_lightning import Callback
+from torch.nn import functional
+from torch_scatter import scatter_add
+from zmq import device
 
 from utils.misc import load_pickle, save_pickle
-
-from torch.nn import functional
-
-from nuscenes.nuscenes import NuScenes
-from nuscenes.nuscenes import Box
-from nuscenes.eval.tracking.data_classes import TrackingConfig,TrackingBox
-from nuscenes.eval.tracking.evaluate import TrackingEval
-from datasets.nuscenes.reporting import add_results_to_submit,build_results_dict
-from datasets.nuscenes.classes import name_from_id
-from pyquaternion import Quaternion
+from utils.nuscenes_helper_functions import (
+    get_gt_sample_annotation_pose, transform_detections_lidar2world_frame)
 
 ###########################################################################
 # MOT Metrics
@@ -44,15 +42,55 @@ from pyquaternion import Quaternion
 UNTRACKED_ID = -1 # Describes Nodes that have not been considered for tracking yet 
 
 
-def compute_nuscenes_3D_mot_metrics(gt_path, out_mot_files_path, seqs, print_results = True):
+def compute_nuscenes_3D_mot_metrics(
+                config_path:str,
+                eval_set:str, 
+                result_path:str,
+                out_mot_files_path,
+                nuscenes_version,
+                nuscenes_dataroot,
+                verbose:bool =True,
+                render_classes = None,
+                render_curves :bool = True):
     """
-
+    Returns Individual and overall 3D MOTmetrics for all sequeces belonging to the given evaluation set
+    Args:
+    config_path: str, relative path to evaluation config file 
+    eval_set: str, defines evaluation set
+    result_path: str, absolute path to the json-file with the tracked detections for the evaluation set
+    out_mot_files_path: str: absolute path for the generated outputs
+    nuscenes_version:  Nuscenes-spefic version, same as the version used for nuscenes_handle
+    nuscenes_dataroot: absolute path to Nuscenes dataset, same as when initializing the nuscenes_handle\
+    verbose: ...
+    render_classes: ....
+    render_curves: bool, if true: generates plots and exports them as pdf for computed MOT metrics  
     Returns:
-        Individual and overall MOTmetrics for all sequeces
+        - metrics_summary: Dict[str,Any]
     """
-    # TrackingEval()
-    summary = None 
-    return summary
+    assert eval_set in NuscenesDataset.ALL_SPLITS, "Given Eval set is not a valid split for nuscenes evaluation! \n Given{}".format(eval_set, )
+
+    cfg_ =None
+    with open(config_path, 'r') as _f:
+        cfg_ = TrackingConfig.deserialize(json.load(_f))
+
+    os.makedirs(out_mot_files_path, exist_ok=True) # Make sure dir exists
+    output_dir_ =  osp.join(out_mot_files_path, 'eval_results')
+
+    nusc_eval = TrackingEval(config=cfg_, 
+                            result_path=result_path, 
+                            eval_set=eval_set, 
+                            output_dir=output_dir_,
+                            nusc_version= nuscenes_version, 
+                            nusc_dataroot= nuscenes_dataroot, 
+                            verbose=verbose,
+                            render_classes=render_classes)
+
+    metrics_summary = nusc_eval.main(render_curves=render_curves)
+
+    if verbose:
+        print(metrics_summary)
+    
+    return metrics_summary
 
 def get_node_indices_from_timeframe_i(timeframe_numbers:torch.Tensor, timeframe:int, as_tuple:bool= False)-> torch.Tensor:
     '''
@@ -477,7 +515,8 @@ def add_tracked_boxes_to_submission(submission: Dict[str, Dict[str, Any]],
                                         mot_graph:NuscenesMotGraph,
                                         local2global_tracking_id_dict :Dict[int,int] = None,
                                         starting_sample_token:str= None,
-                                        ending_sample_token:str= None) -> Dict[str, Dict[str, Any]]:
+                                        ending_sample_token:str= None,
+                                        use_gt = False) -> Dict[str, Dict[str, Any]]:
     """
     Builds list of sample_results-dictionaries for a specific time-frame.
     Idea Mirror sample_annotation-table
@@ -537,19 +576,33 @@ def add_tracked_boxes_to_submission(submission: Dict[str, Dict[str, Any]],
 
     for node_id in selected_node_idx:
         box:Box = mot_graph.graph_dataframe["boxes_list_all"][node_id]
+        
+        # transformed_box = box.copy()
+        # transformed_box.rotate()
 
-        mot_graph.transform_box_lidar2world_frame(box)
         # sample_token: str
         # translation: Tuple[float, float, float] = (0, 0, 0),
         # size: Tuple[float, float, float] = (0, 0, 0),
         # rotation: Tuple[float, float, float, float] = (0, 0, 0, 0),
         # velocity: Tuple[float, float] = (0, 0),
         current_sample_token:str = mot_graph.graph_dataframe["sample_tokens"][node_id]
-        translation: List[float] = box.center.tolist()
+
         size : List[float]  = box.wlh.tolist()
-        orientation: Quaternion = box.orientation
-        rotation: List[float] = [orientation.w, orientation.x, orientation.y, orientation.z]
+        translation: List[float] = None
+        rotation: List[float] = None
         velocity : List[float]= [0.0, 0.0] # fixed velocity
+        if use_gt:
+            translation, orientation = get_gt_sample_annotation_pose(mot_graph.nuscenes_handle,box.token)
+        else:
+            translation: List[float] = box.center.tolist() # LIDAR FRAME
+            orientation: Quaternion = box.orientation # LIDAR FRAME
+            translation, orientation = transform_detections_lidar2world_frame(mot_graph.nuscenes_handle, 
+                            translation, orientation, current_sample_token,
+                            sample_annotation_token = box.token)
+
+        rotation: List[float] = [orientation.w, orientation.x, orientation.y, orientation.z]
+        
+        
 
         # tracking_id: str = '',  # Instance id of this object.
         # tracking_name: str = '',  # The class name used in the tracking challenge.

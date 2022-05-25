@@ -3,25 +3,21 @@ Taken from https://github.com/dvl-tum/mot_neural_solver
 Check out the corresponding Paper https://arxiv.org/abs/1912.07515
 This is serves as inspiration for our own code
 '''
-import sacred
-from sacred import Experiment
-
-from utils.misc import make_deterministic, get_run_str_and_save_dir
-
+import json
+import os
 import os.path as osp
-import os 
 
-from pl_module.pl_module import MOTNeuralSolver
-from utils.evaluation import compute_nuscenes_3D_mot_metrics
-
+import sacred
 # for NuScenes eval
 from nuscenes.eval.tracking.data_classes import TrackingConfig
 from nuscenes.eval.tracking.evaluate import TrackingEval
-import json
+from sacred import SETTINGS, Experiment
 
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
+from pl_module.pl_module import MOTNeuralSolver
+from utils.evaluation import compute_nuscenes_3D_mot_metrics
+from utils.misc import get_run_str_and_save_dir, make_deterministic, save_model_hparams_and_sacred_config
 
-from sacred import SETTINGS
 SETTINGS.CONFIG.READ_ONLY_CONFIG=False
 
 ex = Experiment()
@@ -54,7 +50,10 @@ def main(_config, _run):
                         'dataset_params': _config['dataset_params'],
                         'gpu_settings' : _config['gpu_settings']
                         })
-
+    ################
+    # Save hparams and config.yaml
+    save_model_hparams_and_sacred_config(out_files_dir, model.hparams, _config)
+    
     ###############
     # Get output MOT results files 
 
@@ -67,49 +66,52 @@ def main(_config, _run):
 
     submission_summary, result_path_ = model.track_all_seqs(dataset = test_dataset,
                                               output_files_dir = out_files_dir,
-                                              use_gt = False,
+                                              use_gt = _config['eval_params']['use_gt'],
                                                verbose=True)
 
     if _config['test_dataset_mode'] != "test":
+
         config_path = 'configs/nuscenes_eval/tracking_nips_2019.json'
-        cfg_ =None
-        with open(config_path, 'r') as _f:
-            cfg_ = TrackingConfig.deserialize(json.load(_f))
-        eval_set_ = _config['test_dataset_mode']
+        eval_set = _config['test_dataset_mode']
 
         os.makedirs(out_files_dir, exist_ok=True) # Make sure dir exists
         output_dir_ =  osp.join(out_files_dir, 'eval_results')
+        version_:str = test_dataset.nuscenes_dataset.version
+        dataroot_:str = test_dataset.nuscenes_dataset.dataroot
 
-        version_ = test_dataset.nuscenes_dataset.version
-        dataroot_ = test_dataset.nuscenes_dataset.dataroot
+        compute_nuscenes_3D_mot_metrics(
+                                config_path= config_path,
+                                eval_set=eval_set,
+                                result_path= result_path_,
+                                out_mot_files_path= output_dir_,
+                                nuscenes_version=version_, 
+                                nuscenes_dataroot=dataroot_, 
+                                verbose = True, 
+                                render_classes=None, 
+                                render_curves=True)
 
-        verbose_ = True
+        # cfg_ =None
+        # with open(config_path, 'r') as _f:
+        #     cfg_ = TrackingConfig.deserialize(json.load(_f))
+        # eval_set_ = _config['test_dataset_mode']
 
-        render_classes_ = None
+        # os.makedirs(out_files_dir, exist_ok=True) # Make sure dir exists
+        # output_dir_ =  osp.join(out_files_dir, 'eval_results')
 
-        nusc_eval = TrackingEval(config=cfg_, result_path=result_path_, eval_set=eval_set_, output_dir=output_dir_,
-                             nusc_version=version_, nusc_dataroot=dataroot_, verbose=verbose_,
-                             render_classes=render_classes_)
+        # version_:str = test_dataset.nuscenes_dataset.version
+        # dataroot_:str = test_dataset.nuscenes_dataset.dataroot
 
-        render_curves_:bool = True #computes  PR and TP
+        # verbose_ = True
 
-        metrics_summary = nusc_eval.main(render_curves=render_curves_)
+        # render_classes_ = None
 
-        print(metrics_summary)
+        # nusc_eval = TrackingEval(config=cfg_, result_path=result_path_, eval_set=eval_set_, output_dir=output_dir_,
+        #                      nusc_version=version_, nusc_dataroot=dataroot_, verbose=verbose_,
+        #                      render_classes=render_classes_)
 
-    ###############
-    # If there's GT available (e.g. if testing on train sequences) try to compute MOT metrics
-    # Nuscenes-Case: For evaluation on validation split
-    # try:
-    #     mot_metrics_summary = compute_nuscenes_3D_mot_metrics(gt_path=osp.join(DATA_PATH, 'MOT_eval_gt'),
-    #                                               out_mot_files_path=out_files_dir,
-    #                                               seqs=test_dataset.seq_names,
-    #                                               print_results = False)
-    #     mot_metrics_summary['constr_sr'] = constr_satisf_rate
+        # render_curves_:bool = True #computes  PR and TP
 
-    #     with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'expand_frame_repr', False):
-    #         cols = [col for col in mot_metrics_summary.columns if col in _config['eval_params']['mot_metrics_to_log']]
-    #         print("\n" + str(mot_metrics_summary[cols]))
+        # metrics_summary = nusc_eval.main(render_curves=render_curves_)
 
-    # except:
-    #     print("Could not evaluate the given results")
+        # print(metrics_summary)
+
