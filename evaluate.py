@@ -65,9 +65,10 @@ def main(_config, _run):
                                             device=_config['gpu_settings']['torch_device'])
 
     submission_summary, result_path_ = model.track_all_seqs(dataset = test_dataset,
-                                              output_files_dir = out_files_dir,
-                                              use_gt = _config['eval_params']['use_gt'],
-                                               verbose=True)
+                                            output_files_dir = out_files_dir,
+                                            use_gt = _config['eval_params']['use_gt'],
+                                            verbose=True,
+                                            tracking_threshold = _config['eval_params']['tracking_threshold'])
 
     if _config['test_dataset_mode'] != "test":
 

@@ -12,6 +12,7 @@ from copy import deepcopy
 from tracemalloc import start
 from turtle import st
 from typing import Any, Dict, List, Tuple
+from cv2 import threshold
 
 import numpy as np
 import pandas as pd
@@ -58,7 +59,7 @@ def compute_nuscenes_3D_mot_metrics(
     config_path: str, relative path to evaluation config file 
     eval_set: str, defines evaluation set
     result_path: str, absolute path to the json-file with the tracked detections for the evaluation set
-    out_mot_files_path: str: absolute path for the generated outputs
+    out_mot_files_path: str: absolute path to directory, for the generated outputs 
     nuscenes_version:  Nuscenes-spefic version, same as the version used for nuscenes_handle
     nuscenes_dataroot: absolute path to Nuscenes dataset, same as when initializing the nuscenes_handle\
     verbose: ...
@@ -74,12 +75,11 @@ def compute_nuscenes_3D_mot_metrics(
         cfg_ = TrackingConfig.deserialize(json.load(_f))
 
     os.makedirs(out_mot_files_path, exist_ok=True) # Make sure dir exists
-    output_dir_ =  osp.join(out_mot_files_path, 'eval_results')
 
     nusc_eval = TrackingEval(config=cfg_, 
                             result_path=result_path, 
                             eval_set=eval_set, 
-                            output_dir=output_dir_,
+                            output_dir=out_mot_files_path,
                             nusc_version= nuscenes_version, 
                             nusc_dataroot= nuscenes_dataroot, 
                             verbose=verbose,
@@ -214,7 +214,7 @@ def filter_for_past_edges(incoming_edge_idx:torch.Tensor,
     past_edges = incoming_edge_idx[edges_connecting_to_past_nodes_mask]
     return past_edges
 
-def assign_definitive_connections(mot_graph:NuscenesMotGraph):
+def assign_definitive_connections(mot_graph:NuscenesMotGraph, tracking_threshold:float):
     '''
     backtracks the neighboring node with the highest confidence to connect with a give node.
     Idea: iterate in reverse. start backtracking from last frame and continue until reaching the first frame
@@ -249,6 +249,7 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph):
         node_idx_from_frame_i = torch.nonzero(nodes_from_frame_i_mask, as_tuple=True)[0]
         # filter their incoming edges
         for node_id in node_idx_from_frame_i:
+            #########################################
             incoming_edge_idx = []
             rows, columns = edge_indices[0],edge_indices[1] # COO-format
             edge_mask:torch.Tensor = torch.eq(columns, node_id)
@@ -267,20 +268,35 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph):
                 # it will be considered as a node without any active connections and therefore will be assigned a new trackId
                 # continue with next node
                 continue
-            # Get edge predictions and provide the active neighbor and its tracking confindence
+            #######################################
+            # Threshold the incoming predictions. 
+            # Otherwise predictions without probability above a certain threshold will be selected
             incoming_edge_predictions = edge_preds[incoming_edge_idx]
-            probabilities = functional.softmax(incoming_edge_predictions, dim=0 )
-            log_probabilities = functional.log_softmax(incoming_edge_predictions, dim=0)
+            valid_edges_mask:torch.Tensor = (incoming_edge_predictions > tracking_threshold)
+            if valid_edges_mask.any()==False:
+                # Given all incoming edges have a prediction probability (tracking certainty) lower than the given threshold
+                # Therefore, this node can not be connected to any of previous nodes
+                # No unique active edge can be assigned
+                # continue with next node
+                continue
+            valid_incoming_edge_predictions = torch.zeros_like(incoming_edge_predictions)
+            valid_incoming_edge_predictions[valid_edges_mask] = incoming_edge_predictions[valid_edges_mask]
+            ########################################
+            # Get edge predictions and provide the active neighbor and its tracking confindence
+            
+            probabilities = functional.softmax(valid_incoming_edge_predictions, dim=0 )
+            # Get the edge_index with the highest log_likelihood
+            log_probabilities = functional.log_softmax(valid_incoming_edge_predictions, dim=0)
             local_index = torch.argmax(log_probabilities, dim = 0)
-            assert local_index == torch.argmax(functional.softmax(incoming_edge_predictions, dim=0 ), dim = 0)
+            assert local_index == torch.argmax(functional.softmax(valid_incoming_edge_predictions, dim=0 ), dim = 0)
             
             # look for the global edge index
             global_index = incoming_edge_idx[local_index]
             active_edge_id = global_index
 
             # assert len(active_edge_id) == 1,"more than one active connection is ambigous!"
-
-            tracking_confidence = probabilities[local_index] # tracking confidence for evaluation AMOTA-metric
+            # tracking_confidence is equal to the highest edge_prediction of the valid incoming edges
+            tracking_confidence = valid_incoming_edge_predictions[local_index] # tracking confidence for evaluation AMOTA-metric
             
             # set active edges
             active_edge = edge_indices[:,active_edge_id]

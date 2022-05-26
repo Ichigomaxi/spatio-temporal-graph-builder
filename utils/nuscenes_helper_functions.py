@@ -223,9 +223,9 @@ def transform_detections_lidar2world_frame(nuscenes_handle:NuScenes,
     # Make homogeneous 
     translation.append(1.0)
     np_translation = np.asarray(translation)
-    np_transformed_translation = np_translation
+    np_transformed_translation:np.ndarray = np_translation
     # transform
-    # np_transformed_translation:np.ndarray = lidar_2_ego_transformation_matrix @ np_translation
+    np_transformed_translation = lidar_2_ego_transformation_matrix @ np_translation
     np_transformed_translation = ego_2_world_transformation_matrix @ np_transformed_translation
     # Make non-homogenous again
     transformed_translation: List[float] = np_transformed_translation.tolist()

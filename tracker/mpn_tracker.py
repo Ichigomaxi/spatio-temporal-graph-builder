@@ -3,23 +3,28 @@ Taken and adapted from https://github.com/aleksandrkim61/EagerMOT
 Check out the corresponding Paper https://arxiv.org/abs/2104.14682
 This is serves as inspiration for our own code
 '''
-from typing import  Any, Dict, Iterable, List, Set
-from matplotlib.style import available
+from typing import Any, Dict, Iterable, List, Set
+
 import numpy as np
-
 import torch
-
-from nuscenes.nuscenes import Box
 from datasets.mot_graph import Graph
+from datasets.nuscenes.reporting import (
+    add_results_to_submit, build_results_dict,
+    check_submission_for_missing_samples,
+    insert_empty_lists_for_selected_frame_tokens,
+    is_sample_token_in_submission_contained)
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
-from utils import graph
-
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
+from matplotlib.style import available
 from model.mpn import MOTMPNet
+from nuscenes.nuscenes import Box
+from utils import graph
+from utils.evaluation import (add_tracked_boxes_to_submission,
+                              assign_definitive_connections, assign_track_ids)
+from utils.nuscenes_helper_functions import (get_all_samples_from_scene,
+                                             skip_sample_token)
 
-from utils.evaluation import add_tracked_boxes_to_submission, assign_definitive_connections, assign_track_ids
-from datasets.nuscenes.reporting import add_results_to_submit, build_results_dict
-from utils.nuscenes_helper_functions import skip_sample_token, get_all_samples_from_scene
+
 class MPNTracker:
     """
     Class used to track video sequences.
@@ -52,10 +57,11 @@ class NuscenesMPNTracker(MPNTracker):
     def __init__(self, dataset:NuscenesMOTGraphDataset ,
                     graph_model:MOTMPNet, 
                     use_gt:bool, 
-                    eval_params=None, dataset_params=None, logger=None):
+                    tracking_threshold:float,
+                    eval_params=None, dataset_params=None, logger=None, ):
         super().__init__(dataset, graph_model, use_gt, eval_params, dataset_params, logger)
         ###
-
+        self.tracking_threshold = tracking_threshold
         print("Initialized Nuscenes Tracker")
 
     def _predict_edges(self, graph_obj:Graph):
@@ -76,7 +82,7 @@ class NuscenesMPNTracker(MPNTracker):
 
         dataset:NuscenesMOTGraphDataset = self.dataset
         # Compute active connections
-        assign_definitive_connections(mot_graph)
+        assign_definitive_connections(mot_graph, self.tracking_threshold)
         
         # Assign Tracks
         tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id = assign_track_ids(mot_graph.graph_obj, 
@@ -246,19 +252,42 @@ class NuscenesMPNTracker(MPNTracker):
         previous_tracking_dict = {}
         global_tracking_dict: Dict[int:str] = {}
         potentially_missed_sample_token:Set[str] = set([])
+        ################
+        # Handle Situation were the current scene is not able to be reconstructed by the Dataset object
+        # Therefore the dataset does not yield any graph object for this scene
+        # Set the current_sample_token to the last sample_token to skip the while loop
+        if not filtered_list_scene_sample_tuple:
+            current_sample_token = scene_table['last_sample_token']
+            potentially_missed_sample_token = set(all_available_samples)
+        #####
+
         while (current_sample_token != scene_table['last_sample_token']):
             t = time()
             ##############################################################################
             # check if sample_token is indexed by dataset. 
             # If not then add empty list to the summmary and skip to next sample_token
             if ( (scene_token,current_sample_token) not in dataset.seq_frame_ixs):
+                
+                # Get list of all sample_tokens from last possible graph for this scene
+                _, last_filtered_sample_token = filtered_list_scene_sample_tuple[-1]
+                last_filtered_sample_tokens = []
+                sample_token = last_filtered_sample_token
+                for i in range(frames_per_graph):
+                    last_filtered_sample_tokens.append(sample_token)
+                    sample_token = skip_sample_token(sample_token,0, dataset.nuscenes_handle)
 
                 ##############################################################################
+                # Complement tracking by considering the very last token of the last buildable graph
+                # do this by allowing overlap of 2 timeframes instead of one in 3 frames_per_graph circumstance
                 # check if current sample_token is within the last #frames_per_graph frames
-                if (current_sample_token in all_available_samples[-frames_per_graph:]):
+                # and if it still is within the considered frames of the last graph of the scene
+                if (current_sample_token in all_available_samples[-frames_per_graph:]
+                        and previous_mot_graph is not None
+                        and current_sample_token == last_filtered_sample_tokens[1] 
+                        and current_sample_token != last_filtered_sample_tokens[-1]):
                     # if true we can concatenate it with the last available frame
-                    _, last_sample_token = filtered_list_scene_sample_tuple[-1]
-                    last_mot_graph = self._load_and_infere_mot_graph(scene_token , last_sample_token)
+                    
+                    last_mot_graph = self._load_and_infere_mot_graph(scene_token , last_filtered_sample_token)
                     last_tracking_ID_dict = self._perform_tracking_for_mot_graph( last_mot_graph )
                     # Concatenate
                     #TODO
@@ -268,11 +297,15 @@ class NuscenesMPNTracker(MPNTracker):
                                             current_sample_token)
                     # Add Tracked boxes except the ones from current sample token
                     start_concat_sample_token = skip_sample_token(current_sample_token,0, dataset.nuscenes_handle)
+                        
                     self._add_tracked_boxes_to_submission(submission,
                                                             last_mot_graph,
                                                             last_tracking_ID_dict,
                                                             start_concat_sample_token,
                                                             use_gt=self.use_gt)
+
+                    # assert is_sample_token_in_submission_contained(submission,current_sample_token),\
+                    #         "last considered frame of dataset has not been considered, scene:{}, sample:{}".format(seq_name,current_sample_token)
                     ##########################
                     # Assign last sample_token. Should be the same as last frame of scene
                     next_sample_token = last_mot_graph.graph_dataframe['available_sample_tokens'][-1]
@@ -280,7 +313,7 @@ class NuscenesMPNTracker(MPNTracker):
                     # Assign previous variables
                     previous_mot_graph = last_mot_graph
                     previous_tracking_dict = last_tracking_ID_dict
-
+                # If the sample is not part of a buildable graph skip to the next token
                 else:
                     # log potentially missed sample_tokens
                     sample_token = current_sample_token
@@ -365,3 +398,13 @@ class NuscenesMPNTracker(MPNTracker):
         ##########################################
         # Complement Submission with missing sample_tokens 
         # add empty lists to submission
+        
+        missing_samples:Set[str] = check_submission_for_missing_samples(submission, potentially_missed_sample_token)
+        if missing_samples:
+            insert_empty_lists_for_selected_frame_tokens(submission, missing_samples)
+
+        missing_samples:Set[str] = check_submission_for_missing_samples(submission, set(all_available_samples))
+        if missing_samples:
+            insert_empty_lists_for_selected_frame_tokens(submission, missing_samples)
+
+        

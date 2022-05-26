@@ -240,7 +240,8 @@ class MOTNeuralSolver(pl.LightningModule):
     def track_single_graphs(self, output_files_dir,
                         dataset:NuscenesMOTGraphDataset, 
                         use_gt:bool = False, 
-                        verbose:bool = False):
+                        verbose:bool = False,
+                        tracking_threshold:float = 0.5):
         """
         Used for Inference step and evaluation
         """
@@ -261,21 +262,23 @@ class MOTNeuralSolver(pl.LightningModule):
             #         inference_mode=True)
             seq_name, start_frame = dataset.seq_frame_ixs[i]
             scene = dataset.nuscenes_handle.get("scene", seq_name)
-            print("scene_token: ", scene, "scene_name", scene["name"] )
+            print("scene_token: ", scene["token"], "scene_name", scene["name"] )
             print("sample_token: ",start_frame)
             mot_graph = dataset.get_from_frame_and_seq(
                                         seq_name = seq_name,
                                         start_frame = start_frame,
                                         return_full_object=True,
                                         inference_mode=True)
-
-            # logits = self.model(mot_graph.graph_obj)['classified_edges'][-1].view(-1)
-            # edge_preds = torch.sigmoid(logits)
-            edge_preds = self.inference_step(mot_graph.graph_obj)
+             # Predict active edges
+            if use_gt:  # For debugging purposes and obtaining oracle results
+                edge_preds = mot_graph.graph_obj.edge_labels
+            else:
+                with torch.no_grad():
+                    edge_preds = self.inference_step(mot_graph.graph_obj)
             mot_graph.graph_obj.edge_preds = edge_preds
 
             # Compute active connections
-            assign_definitive_connections(mot_graph)
+            assign_definitive_connections(mot_graph, tracking_threshold)
             
             # # Assign Tracks
             tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id = assign_track_ids(mot_graph.graph_obj, 
@@ -288,7 +291,7 @@ class MOTNeuralSolver(pl.LightningModule):
             summary = {}
             summary = prepare_for_submission(summary)
             # # Build TrackingBox List for evaluation
-            summary = add_tracked_boxes_to_submission(summary, mot_graph = mot_graph)
+            summary = add_tracked_boxes_to_submission(summary, mot_graph = mot_graph,use_gt=use_gt)
             
             if(self.hparams['eval_params']['visualize_graph']):
                 geometry_list = visualize_eval_graph(mot_graph)
@@ -318,7 +321,8 @@ class MOTNeuralSolver(pl.LightningModule):
     def track_all_seqs(self, output_files_dir,
                         dataset:NuscenesMOTGraphDataset, 
                         use_gt:bool = False, 
-                        verbose:bool = False):
+                        verbose:bool = False,
+                        tracking_threshold: float = 0.5):
         """
         Used for Inference step and evaluation
         """
@@ -329,7 +333,8 @@ class MOTNeuralSolver(pl.LightningModule):
                             graph_model = self.model,
                             use_gt= use_gt,
                             eval_params = self.hparams['eval_params'],
-                            dataset_params = self.hparams['dataset_params'])
+                            dataset_params = self.hparams['dataset_params'],
+                            tracking_threshold = tracking_threshold)
 
         # Prepare submission dict
         summary = {}

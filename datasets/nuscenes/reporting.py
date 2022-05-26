@@ -6,7 +6,7 @@ This is serves as inspiration for our own code
 import os
 import ujson as json
 import time
-from typing import IO, Any, Dict, Iterable, List
+from typing import IO, Any, Dict, Iterable, List, Set
 
 import numpy as np
 from pyquaternion import Quaternion
@@ -75,3 +75,32 @@ def save_to_json_file(submission: Dict[str, Dict[str, Any]],
         json.dump(submission, f, indent=4)
     
     return results_file
+
+def check_submission_for_missing_samples(
+                submission: Dict[str, Dict[str, Any]], 
+                potentially_missing_frame_tokens:Set[str]) -> Set[str]:
+    """
+    """
+    missed_frame_tokens:Set[str] = set([])
+    results_dict:Dict[str, Any] = submission["results"]
+    tracked_frame_tokens:Set[str]  = {frame_token for frame_token in results_dict}
+    for potentially_missing_frame_token in potentially_missing_frame_tokens:
+        if potentially_missing_frame_token not in tracked_frame_tokens:
+            missed_frame_tokens.update({potentially_missing_frame_token})
+    return missed_frame_tokens
+            
+def is_sample_token_in_submission_contained(submission: Dict[str, Dict[str, Any]], selected_frame_token : str):
+    """
+    """
+    results_dict:Dict[str, Any] = submission["results"]
+    for tracked_sample_tokens in results_dict:
+        if tracked_sample_tokens == selected_frame_token:
+            return True
+    return False
+    
+
+def insert_empty_lists_for_selected_frame_tokens(submission: Dict[str, Dict[str, Any]], selected_frame_tokens : Set[str]):
+    """
+    """
+    for frame_token in selected_frame_tokens:
+        submission["results"][frame_token] = []

@@ -97,5 +97,6 @@ def main(_config, _run):
 
     model.track_single_graphs(output_files_dir,
                         test_dataset, 
-                        use_gt = False, 
-                        verbose = True)
+                        use_gt = _config['eval_params']['use_gt'], 
+                        verbose = True,
+                        tracking_threshold = _config['eval_params']['tracking_threshold'])

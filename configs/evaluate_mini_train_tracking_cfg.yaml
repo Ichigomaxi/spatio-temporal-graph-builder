@@ -14,13 +14,13 @@ ckpt_path: 'experiments/05-05_18:30_train_w_LR_scheduler/model_checkpoints/epoch
 # Config for modes from the nuscenes split
 # train_dataset_mode: "train"
 # eval_dataset_mode: "val"
-test_dataset_mode: "mini_val"
+test_dataset_mode: "mini_train"
 
 gpu_settings:
   device_type: "gpu"
   # Specify which GPUs to use
-  device_id: [0] # Specifically takes the gpu associated with cuda:1 
-  torch_device: 'cuda:0'
+  device_id: [1] # Specifically takes the gpu associated with cuda:1 
+  torch_device: 'cuda:1'
 
 # train_params:
 #   batch_size: 4

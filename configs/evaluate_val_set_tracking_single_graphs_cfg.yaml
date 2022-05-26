@@ -14,7 +14,7 @@ ckpt_path: 'experiments/05-05_18:30_train_w_LR_scheduler/model_checkpoints/epoch
 # Config for modes from the nuscenes split
 # train_dataset_mode: "train"
 # eval_dataset_mode: "val"
-test_dataset_mode: "mini_val"
+test_dataset_mode: "val"
 
 gpu_settings:
   device_type: "gpu"
@@ -22,41 +22,18 @@ gpu_settings:
   device_id: [1] # Specifically takes the gpu associated with cuda:1 
   torch_device: 'cuda:1'
 
-# train_params:
-#   batch_size: 4
-#   num_epochs: 200
-#   optimizer:
-#     type: Adam
-#     args:
-#       lr: 0.0001
-#       weight_decay: 0.001
-
-#   lr_scheduler:
-#     type:
-#     args:
-#       step_size: 7
-#       gamma: 0.5
-
-#   num_workers: 0 # Used for dataloaders
-#   save_every_epoch: True # Determines if every a checkpoint will be saved for every epoch
-#   save_epoch_start: 1 # If the arg above is set to True, determines the first epoch after which we start saving ckpts
-#   tensorboard: True
-#   num_save_top_k: 2
-#   include_custom_checkpointing : True
-#   include_early_stopping : True
-
 dataset_params:
   # Preprocessing ParamsL
   load_valid_sequence_sample_list : True
   # If the above is true then specify the path to the pickle files
   # Must be absolutepath until now
   # if mode not train or val then sequence_sample_list_train_path will be loaded into Dataset object
-  sequence_sample_list_train_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_mini_nuscenes/sequence_sample_list_mini_train.pkl'
-  sequence_sample_list_val_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_mini_nuscenes/sequence_sample_list_mini_val.pkl'
+  sequence_sample_list_train_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_nuscenes/sequence_sample_list_train.pkl' 
+  sequence_sample_list_val_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_nuscenes/sequence_sample_list_val.pkl'
 
   # Dataset Processing params:
-  dataset_version: 'v1.0-mini'
-  dataroot : '/media/HDD2/Datasets/mini_nusc'
+  dataset_version: 'v1.0-trainval'
+  dataroot : '/mount/HDD2/Datasets/nuscenes2'
   is_windows_path : False
 
   # Filter Parameter
