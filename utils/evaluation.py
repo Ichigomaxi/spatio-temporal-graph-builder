@@ -16,6 +16,7 @@ from cv2 import threshold
 
 import numpy as np
 import pandas as pd
+from tensorboard import summary
 import torch
 from datasets.NuscenesDataset import NuscenesDataset
 from datasets.mot_graph import Graph
@@ -686,114 +687,71 @@ def prepare_for_submission(submission: Dict[str, Dict[str, Any]]):
     return submission
     
 
-# def compute_mot_metrics(gt_path, out_mot_files_path, seqs, print_results = True):
-#     """
-#     The following code is adapted from
-#     https://github.com/cheind/py-motmetrics/blob/develop/motmetrics/apps/eval_motchallenge.py
-#     It computes all MOT metrics from a set of output tracking files in MOTChallenge format
-#     Args:
-#         gt_path: path where MOT ground truth files are stored. Each gt file must be stored as
-#         <SEQ NAME>/gt/gt.txt
-#         out_mot_files_path: path where output files are stored. Each file must be named <SEQ NAME>.txt
-#         seqs: Names of sequences to be evaluated
+class MOTMetricsLogger(Callback):
+    """
+    Callback to compute MOT Validation metrics during training
+    IF unfinished, complete it with compute_nuscenes_3D_mot_metrics()
+    """
+    def __init__(self, compute_oracle_results):
+        super(MOTMetricsLogger).__init__()
+        self.compute_oracle_results = compute_oracle_results
 
-#     Returns:
-#         Individual and overall MOTmetrics for all sequeces
-#     """
-#     def _compare_dataframes(gts, ts):
-#         """Builds accumulator for each sequence."""
-#         accs = []
-#         names = []
-#         for k, tsacc in ts.items():
-#             if k in gts:
-#                 accs.append(mm.utils.compare_to_groundtruth(gts[k], tsacc, 'iou', distth=0.5))
-#                 names.append(k)
+    # def _compute_mot_metrics(self, epoch_num, pl_module, oracle_results = False):
+    #     constr_satisf_rate = pl_module.track_all_seqs(dataset=self.dataset,
+    #                                                   output_files_dir=self.output_files_dir,
+    #                                                   use_gt=oracle_results)
 
-#         return accs, names
+    #     # Compute MOT Metrics
+    #     mot_metrics_summary = compute_mot_metrics(gt_path=osp.join(DATA_PATH, 'MOT_eval_gt'),
+    #                                               out_mot_files_path=self.output_files_dir,
+    #                                               seqs=self.dataset.seq_names)
+    #     mot_metrics_summary['constr_sr'] = constr_satisf_rate
+    #     mot_metrics_summary['epoch_num'] = epoch_num + 1
 
-#     mm.lap.default_solver = 'lapsolver'
-#     gtfiles = [os.path.join(gt_path, i, 'gt/gt.txt') for i in seqs]
-#     tsfiles = [os.path.join(out_mot_files_path, '%s.txt' % i) for i in seqs]
+    #     return mot_metrics_summary
 
-#     gt = OrderedDict([(Path(f).parts[-3], mm.io.loadtxt(f, fmt='mot15-2D', min_confidence=1)) for f in gtfiles])
-#     ts = OrderedDict([(os.path.splitext(Path(f).parts[-1])[0], mm.io.loadtxt(f, fmt='mot15-2D')) for f in tsfiles])
+    # def on_train_start(self, trainer, pl_module):
+    #     self.available_data = len(trainer.val_dataloaders) > 0 and len(trainer.val_dataloaders[0]) > 0
+    #     if self.available_data:
+    #         self.dataset = trainer.val_dataloaders[0].dataset
+    #         # Determine the path in which MOT results will be stored
+    #         if trainer.logger is not None:
+    #             save_dir = osp.join(trainer.logger.save_dir, trainer.logger.name, trainer.logger.version )
 
-#     mh = mm.metrics.create()
-#     accs, names = _compare_dataframes(gt, ts)
+    #         else:
+    #             save_dir = trainer.default_save_path
 
-#     # We will need additional metrics to compute IDF1, etc. from different splits inf CrossValidationEvaluator
-#     summary = mh.compute_many(accs, names=names,
-#                               metrics=mm.metrics.motchallenge_metrics + ['num_objects',
-#                                                                          'idtp', 'idfn', 'idfp', 'num_predictions'],
-#                               generate_overall=True)
-#     if print_results:
-#         print(mm.io.render_summary(summary, formatters=mh.formatters, namemap=mm.io.motchallenge_metric_names))
+    #         self.output_files_dir = osp.join(save_dir, 'mot_files')
+    #         self.output_metrics_dir = osp.join(save_dir, 'mot_metrics')
+    #         os.makedirs(self.output_metrics_dir, exist_ok=True)
 
-#     return summary
+    #     # Compute oracle results if needed
+    #     if self.available_data and self.compute_oracle_results:
+    #         mot_metrics_summary = self._compute_mot_metrics(trainer.current_epoch, pl_module, oracle_results=True)
+    #         print(mot_metrics_summary)
+    #         oracle_path = osp.join(self.output_metrics_dir, 'oracle.npy')
+    #         save_pickle(mot_metrics_summary.to_dict(), oracle_path)
+    #         trainer.oracle_metrics = mot_metrics_summary
 
-# class MOTMetricsLogger(Callback):
-#     """
-#     Callback to compute MOT Validation metrics during training
-#     """
-#     def __init__(self, compute_oracle_results):
-#         super(MOTMetricsLogger).__init__()
-#         self.compute_oracle_results = compute_oracle_results
+    # def on_epoch_end(self, trainer, pl_module):
+    #     # Compute MOT metrics on validation data, save them and log them
+    #     if self.available_data:
+    #         mot_metrics_summary = self._compute_mot_metrics(trainer.current_epoch, pl_module, oracle_results=False)
+    #         metrics_path = osp.join(self.output_metrics_dir, f'epoch_{trainer.current_epoch + 1:03}.npy')
+    #         save_pickle(mot_metrics_summary.to_dict(), metrics_path)
 
-#     def _compute_mot_metrics(self, epoch_num, pl_module, oracle_results = False):
-#         constr_satisf_rate = pl_module.track_all_seqs(dataset=self.dataset,
-#                                                       output_files_dir=self.output_files_dir,
-#                                                       use_gt=oracle_results)
+    #         if self.compute_oracle_results:
+    #             for metric in pl_module.hparams['eval_params']['mot_metrics_to_norm']:
+    #                 mot_metrics_summary['norm_' + metric] = mot_metrics_summary[metric] / trainer.oracle_metrics[metric]
 
-#         # Compute MOT Metrics
-#         mot_metrics_summary = compute_mot_metrics(gt_path=osp.join(DATA_PATH, 'MOT_eval_gt'),
-#                                                   out_mot_files_path=self.output_files_dir,
-#                                                   seqs=self.dataset.seq_names)
-#         mot_metrics_summary['constr_sr'] = constr_satisf_rate
-#         mot_metrics_summary['epoch_num'] = epoch_num + 1
+    #         if pl_module.logger is not None and hasattr(pl_module.logger, 'experiment'):
+    #             metric_names = pl_module.hparams['eval_params']['mot_metrics_to_log']
+    #             if pl_module.hparams['eval_params']['log_per_seq_metrics']:
+    #                 metrics_log ={f'{metric}/val/{seq}': met_dict[seq] for metric, met_dict in mot_metrics_summary.items() for seq in
+    #                               list(self.dataset.seq_names) + ['OVERALL'] if metric in metric_names}
 
-#         return mot_metrics_summary
+    #             else:
+    #                 metrics_log ={f'{metric}/val': met_dict['OVERALL'] for metric, met_dict in mot_metrics_summary.items()
+    #                               if metric in metric_names}
+    #                 pl_module.logger.log_metrics(metrics_log, step = trainer.global_step)
 
-#     def on_train_start(self, trainer, pl_module):
-#         self.available_data = len(trainer.val_dataloaders) > 0 and len(trainer.val_dataloaders[0]) > 0
-#         if self.available_data:
-#             self.dataset = trainer.val_dataloaders[0].dataset
-#             # Determine the path in which MOT results will be stored
-#             if trainer.logger is not None:
-#                 save_dir = osp.join(trainer.logger.save_dir, trainer.logger.name, trainer.logger.version )
-
-#             else:
-#                 save_dir = trainer.default_save_path
-
-#             self.output_files_dir = osp.join(save_dir, 'mot_files')
-#             self.output_metrics_dir = osp.join(save_dir, 'mot_metrics')
-#             os.makedirs(self.output_metrics_dir, exist_ok=True)
-
-#         # Compute oracle results if needed
-#         if self.available_data and self.compute_oracle_results:
-#             mot_metrics_summary = self._compute_mot_metrics(trainer.current_epoch, pl_module, oracle_results=True)
-#             print(mot_metrics_summary)
-#             oracle_path = osp.join(self.output_metrics_dir, 'oracle.npy')
-#             save_pickle(mot_metrics_summary.to_dict(), oracle_path)
-#             trainer.oracle_metrics = mot_metrics_summary
-
-#     def on_epoch_end(self, trainer, pl_module):
-#         # Compute MOT metrics on validation data, save them and log them
-#         if self.available_data:
-#             mot_metrics_summary = self._compute_mot_metrics(trainer.current_epoch, pl_module, oracle_results=False)
-#             metrics_path = osp.join(self.output_metrics_dir, f'epoch_{trainer.current_epoch + 1:03}.npy')
-#             save_pickle(mot_metrics_summary.to_dict(), metrics_path)
-
-#             if self.compute_oracle_results:
-#                 for metric in pl_module.hparams['eval_params']['mot_metrics_to_norm']:
-#                     mot_metrics_summary['norm_' + metric] = mot_metrics_summary[metric] / trainer.oracle_metrics[metric]
-
-#             if pl_module.logger is not None and hasattr(pl_module.logger, 'experiment'):
-#                 metric_names = pl_module.hparams['eval_params']['mot_metrics_to_log']
-#                 if pl_module.hparams['eval_params']['log_per_seq_metrics']:
-#                     metrics_log ={f'{metric}/val/{seq}': met_dict[seq] for metric, met_dict in mot_metrics_summary.items() for seq in
-#                                   list(self.dataset.seq_names) + ['OVERALL'] if metric in metric_names}
-
-#                 else:
-#                     metrics_log ={f'{metric}/val': met_dict['OVERALL'] for metric, met_dict in mot_metrics_summary.items()
-#                                   if metric in metric_names}
-#                     pl_module.logger.log_metrics(metrics_log, step = trainer.global_step)
