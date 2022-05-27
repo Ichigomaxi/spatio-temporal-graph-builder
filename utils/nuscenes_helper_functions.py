@@ -156,12 +156,9 @@ def get_sample_data_table(nuscenes_handle:NuScenes,
 
     return ref_sd_record
 
-def get_sensor_2_ego_transformation_matrix(nuscenes_handle:NuScenes,
+def get_sensor_pose(nuscenes_handle:NuScenes,
                                 sensor_channel:str, 
-                                sample_token:str) -> np.ndarray:
-    '''
-    sensor_channel :  e.g. : 'LIDAR_TOP'
-    '''
+                                sample_token:str):
 
     ref_sd_record = get_sample_data_table(nuscenes_handle, sensor_channel, sample_token)
 
@@ -172,23 +169,15 @@ def get_sensor_2_ego_transformation_matrix(nuscenes_handle:NuScenes,
 
     assert sensor_channel == sensor_record['channel'], "Is not the same channel! :\n Given: {} \n Expected {}".format(sensor_record, sensor_channel)
     
-    # TODO transformation
-    # Homogeneous transformation matrix from sensor coordinate frame to ego car frame.
     translation_sensor_from_ego_frame = current_cs_record['translation']
     rotation_sensor_from_ego_frame = Quaternion(current_cs_record['rotation'])
-    sensor_2_ego_transformation_matrix = \
-            transform_matrix(translation_sensor_from_ego_frame, 
-                            rotation_sensor_from_ego_frame,
-                            inverse=True)
 
-    return sensor_2_ego_transformation_matrix
+    return translation_sensor_from_ego_frame, rotation_sensor_from_ego_frame
 
-def get_ego_2_world_transformation_matrix(nuscenes_handle:NuScenes,
+def get_ego_pose(nuscenes_handle:NuScenes,
                                 sensor_channel:str, 
-                                sample_token:str) -> np.ndarray:
-    '''
-    sensor_channel :  e.g. : 'LIDAR_TOP'
-    '''
+                                sample_token:str):
+
     # Get ego pose table
     ref_sd_record = get_sample_data_table(nuscenes_handle, sensor_channel, sample_token)
     ref_pose_record = nuscenes_handle.get('ego_pose', ref_sd_record['ego_pose_token'])
@@ -197,12 +186,67 @@ def get_ego_2_world_transformation_matrix(nuscenes_handle:NuScenes,
     # Homogeneous transformation matrix from global to _current_ ego car frame.
     translation_ego_from_world_frame = ref_pose_record['translation']
     rotation_ego_from_world_frame = Quaternion(ref_pose_record['rotation'])
+
+    return translation_ego_from_world_frame, rotation_ego_from_world_frame
+
+
+def get_sensor_2_ego_transformation_matrix(nuscenes_handle:NuScenes,
+                                sensor_channel:str, 
+                                sample_token:str,
+                                inverse = False) -> np.ndarray:
+    '''
+    sensor_channel :  e.g. : 'LIDAR_TOP'
+    '''
+    # TODO transformation
+    # Homogeneous transformation matrix from sensor coordinate frame to ego car frame.
+    translation_sensor_from_ego_frame, rotation_sensor_from_ego_frame =\
+        get_sensor_pose(nuscenes_handle,sensor_channel, sample_token)
+
+    sensor_2_ego_transformation_matrix = \
+            transform_matrix(translation_sensor_from_ego_frame, 
+                            rotation_sensor_from_ego_frame,
+                            inverse = inverse)
+
+    return sensor_2_ego_transformation_matrix
+
+def get_ego_2_world_transformation_matrix(nuscenes_handle:NuScenes,
+                                sensor_channel:str, 
+                                sample_token:str,
+                                inverse = False) -> np.ndarray:
+    '''
+    sensor_channel :  e.g. : 'LIDAR_TOP'
+    '''
+    # TODO transformation
+    # Homogeneous transformation matrix from global to _current_ ego car frame.
+    translation_ego_from_world_frame, rotation_ego_from_world_frame = \
+            get_ego_pose(nuscenes_handle,sensor_channel, sample_token)
+
     ego_2_world_transformation_matrix = \
             transform_matrix(translation_ego_from_world_frame, 
                 rotation_ego_from_world_frame,
-                inverse=True)
+                inverse= inverse)
     
     return ego_2_world_transformation_matrix
+
+def homogeneous_transformation(transformation_matrix:np.ndarray, 
+                                translation: List[float] ,
+                                rotation :Quaternion):
+    translation.append(1.0)
+    np_translation = np.asarray(translation)
+    np_transformed_translation:np.ndarray = np_translation
+    # transform
+    np_transformed_translation = transformation_matrix @ np_translation
+    # Make non-homogenous again
+    transformed_translation: List[float] = np_transformed_translation.tolist()
+    transformed_translation.pop()
+
+    # Transform rotation
+    rotation_matrix = transformation_matrix[:3, :3]
+    orientation_matrix :np.ndarray = rotation.rotation_matrix
+    orientation_matrix = rotation_matrix @ orientation_matrix
+    transformed_rotation:Quaternion = Quaternion(matrix=orientation_matrix)
+
+    return transformed_translation, transformed_rotation
 
 def transform_detections_lidar2world_frame(nuscenes_handle:NuScenes, 
                     translation: List[float], orientation: Quaternion , 
@@ -212,12 +256,17 @@ def transform_detections_lidar2world_frame(nuscenes_handle:NuScenes,
     Returns and transforms given translation and rotation from LIDAR_TOP frame into World frame
     If sample_annotation is given a assertion test can be done. However it is not necessary
     """
+    absolute_error_threshold = 1e-10
     transformed_translation: List[float] = None
     transformed_rotation: Quaternion = None
 
     ref_channel = 'LIDAR_TOP'
-    lidar_2_ego_transformation_matrix:np.ndarray = get_sensor_2_ego_transformation_matrix(nuscenes_handle, ref_channel, sample_token)
-    ego_2_world_transformation_matrix:np.ndarray = get_ego_2_world_transformation_matrix(nuscenes_handle, ref_channel, sample_token)
+    lidar_2_ego_transformation_matrix:np.ndarray = \
+        get_sensor_2_ego_transformation_matrix(nuscenes_handle, ref_channel,
+            sample_token , inverse = False)
+    ego_2_world_transformation_matrix:np.ndarray = \
+        get_ego_2_world_transformation_matrix(nuscenes_handle, ref_channel, 
+            sample_token , inverse = False)
     
     # Transform translation 
     # Make homogeneous 
@@ -238,21 +287,21 @@ def transform_detections_lidar2world_frame(nuscenes_handle:NuScenes,
     orientation_matrix = lidar_2_ego_rotation_matrix @ orientation_matrix
     orientation_matrix = ego_2_world_rotation_matrix @ orientation_matrix
     transformed_rotation:Quaternion = Quaternion(matrix=orientation_matrix)
-    # # Get Calibrated Sensor table for 
-    # current_cs_record = nuscenes_handle.get('calibrated_sensor', ref_sd_record['calibrated_sensor_token'])
-    # sensor_record = nuscenes_handle.get('sensor', current_cs_record['sensor_token'])
-    # assert ref_channel == sensor_record['channel'], "Is not the same channel! :\n Given: {} \n Expected {}".format(sensor_record, ref_channel)
-    # # Homogeneous transformation matrix from sensor coordinate frame to ego car frame.
-    # car_from_current = transform_matrix(current_cs_record['translation'], Quaternion(current_cs_record['rotation']),
-    #                                     inverse=False)
+
+    # Double check correctness if possible
     if sample_annotation_token is not None:
-        sample_annotation = nuscenes_handle.get('sample_annotation', sample_annotation_token)
-        translation_world_frame = sample_annotation["translation"]
-        rotation_world_frame = sample_annotation["rotation"]
-        rotation_world_frame = Quaternion(rotation_world_frame)
+        # sample_annotation = nuscenes_handle.get('sample_annotation', sample_annotation_token)
+        # translation_world_frame = sample_annotation["translation"]
+        # rotation_world_frame = sample_annotation["rotation"]
+        # rotation_world_frame = Quaternion(rotation_world_frame)
+        translation_world_frame, rotation_world_frame = \
+                get_gt_sample_annotation_pose(nuscenes_handle,sample_annotation_token)
         #TODO Assertion
-        assert transformed_translation == translation_world_frame
-        assert transformed_rotation == rotation_world_frame
+        comparison_array = (np.asarray(transformed_translation) - np.asarray(translation_world_frame)) 
+        absolute_error = np.linalg.norm(comparison_array)
+        assert absolute_error < absolute_error_threshold, 'Translation was not transformed correctly into world coordinates'
+        absolute_distance = (rotation_world_frame.absolute_distance(rotation_world_frame,transformed_rotation))
+        assert (absolute_distance < absolute_error_threshold), 'Rotation was not transformed correctly into world coordinates'
     # Fuse four transformation matrices into one and perform transform.
     # trans_matrix = reduce(np.dot, [ref_from_car, car_from_global, global_from_car, car_from_current])
     # current_pc.transform(trans_matrix)

@@ -33,7 +33,9 @@ def main(_config, _run):
     make_deterministic(12345)
 
     run_str, save_dir = get_run_str_and_save_dir(_config['run_id'], None, _config['add_date'])
-    out_files_dir = osp.join(save_dir, 'mot_metrics')
+    # out_files_dir = osp.join(save_dir, 'mot_metrics')
+    out_files_dir = save_dir
+    os.makedirs(out_files_dir, exist_ok=True) # Make sure dir exists
     ###############
     # Load model from checkpoint and update config entries that may vary from the ones used in training
     checkpoint_path = _config['ckpt_path'] \

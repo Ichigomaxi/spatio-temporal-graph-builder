@@ -95,7 +95,7 @@ eval_params:
   # Logging / Metrics reporting params
   tensorboard: True
   save_submission: True
-  use_gt: True
+  use_gt: False
   tracking_threshold: 0.5
   # check_val_every_n_epoch: 9999
   # val_percent_check: 0.15 # Percentage of the entire dataset used each time that validation loss is computed
