@@ -49,7 +49,7 @@ dataset_params:
   # Contains a list of nuscenes class labels.
   # Only detections from these clases will be loaded for the graph
   # filterBoxes_categoryQuery: ['vehicle.car'] 
-  filterBoxes_categoryQuery: ['vehicle.car'] 
+  filterBoxes_categoryQuery: ['vehicle.bus'] #['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian', 'vehicle.trailer', 'vehicle.truck']
 
   # Graph Construction Parameters
   graph_construction_params:
@@ -72,9 +72,9 @@ dataset_params:
 
 
 data_splits: # See nuscenes.datasplit()
-  train: ['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']
-  val: ['scene-0103', 'scene-0916']
-  test: []
+  # train: ['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']
+  # val: ['scene-0103', 'scene-0916']
+  # test: []
 
 eval_params:
   # Logging / Metrics reporting params

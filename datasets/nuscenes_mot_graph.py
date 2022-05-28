@@ -601,9 +601,9 @@ class NuscenesMotGraphAnalyzer(NuscenesMotGraph):
             # Embed dummy objects if number of objects is smaller then any knn-Parameter
             # this will also catch cases where no objects are left after filtering 
             # there must be at least k + 1 elements such that one element can have k neighbors
-            if (len(boxes) < (self.KNN_PARAM_SPATIAL + 1)) \
-                or (len(boxes) < (self.KNN_PARAM_TEMPORAL + 1)
-                and self.adapt_knn_param == False):
+            if ((len(boxes) < (self.KNN_PARAM_SPATIAL + 1)) \
+                or (len(boxes) < (self.KNN_PARAM_TEMPORAL + 1)))\
+                and (self.adapt_knn_param == False):
                 spatial_difference = self.KNN_PARAM_SPATIAL + 1 - len(boxes)
                 temporal_difference = self.KNN_PARAM_TEMPORAL + 1 - len(boxes)
                 num_needed_boxes = max(spatial_difference, temporal_difference)
