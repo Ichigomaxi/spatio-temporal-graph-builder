@@ -193,35 +193,35 @@ def visualize_eval_graph(mot_graph:NuscenesMotGraph):
 
     # Basic graph
 
-    # line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
-    #                                 edge_indices= edge_indices,
-    #                                 color = LIGHTGREY*0.1
-    #                                 )
-    # geometry_list += line_set_sequence
+    line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
+                                    edge_indices= edge_indices,
+                                    color = LIGHTGREY*0.1
+                                    )
+    geometry_list += line_set_sequence
 
     #----------------------------------------
     # Active and inactive Edges
 
-    # active_edges:torch.Tensor = mot_graph.graph_obj.active_edges
-    # only_active_edges_indices =  edge_indices[:,active_edges]
-    # line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
-    #                                 edge_indices= only_active_edges_indices,
-    #                                 color = BLUE
-    #                                 )
-    # geometry_list += line_set_sequence
+    active_edges:torch.Tensor = mot_graph.graph_obj.active_edges
+    only_active_edges_indices =  edge_indices[:,active_edges]
+    line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
+                                    edge_indices= only_active_edges_indices,
+                                    color = BLUE
+                                    )
+    geometry_list += line_set_sequence
 
     #----------------------------------------
     # Get correct predictions
-    active_edges:torch.Tensor = mot_graph.graph_obj.active_edges
-    only_active_edges_indices =  edge_indices[:,active_edges]
-    edge_labels_for_active_edges = mot_graph.graph_obj.edge_labels[active_edges]
-    correct_predictions_edge_indices = only_active_edges_indices[:,edge_labels_for_active_edges >=1]
+    # active_edges:torch.Tensor = mot_graph.graph_obj.active_edges
+    # only_active_edges_indices =  edge_indices[:,active_edges]
+    # edge_labels_for_active_edges = mot_graph.graph_obj.edge_labels[active_edges]
+    # correct_predictions_edge_indices = only_active_edges_indices[:,edge_labels_for_active_edges >=1]
 
-    line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
-                                    edge_indices= correct_predictions_edge_indices,
-                                    color = YELLOW
-                                    )
-    geometry_list += line_set_sequence
+    # line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
+    #                                 edge_indices= correct_predictions_edge_indices,
+    #                                 color = YELLOW
+    #                                 )
+    # geometry_list += line_set_sequence
     
     #----------------------------------------
     # GT 
