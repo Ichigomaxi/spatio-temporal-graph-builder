@@ -58,20 +58,20 @@ class NuscenesMotGraph(object):
 
         self.SPATIAL_SHIFT_TIMEFRAMES, self.KNN_PARAM_TEMPORAL , self.KNN_PARAM_SPATIAL = None, None, None
         if dataset_params is not None:
-            self.KNN_PARAM_SPATIAL = dataset_params["graph_construction_params"]["spatial_knn_num_neighbors"]
-            self.KNN_PARAM_TEMPORAL = dataset_params["graph_construction_params"]["temporal_knn_num_neighbors"]
-            self.SPATIAL_SHIFT_TIMEFRAMES = dataset_params["graph_construction_params"]["spatial_shift_timeframes"]
+            self.KNN_PARAM_SPATIAL:int = dataset_params["graph_construction_params"]["spatial_knn_num_neighbors"]
+            self.KNN_PARAM_TEMPORAL:int = dataset_params["graph_construction_params"]["temporal_knn_num_neighbors"]
+            self.SPATIAL_SHIFT_TIMEFRAMES:int = dataset_params["graph_construction_params"]["spatial_shift_timeframes"]
 
-            self.MAX_TEMPORAL_EDGE_LENGTH = self.max_frame_dist - 1
+            self.MAX_TEMPORAL_EDGE_LENGTH:int = self.max_frame_dist - 1
             if (("max_temporal_edge_length" in  dataset_params["graph_construction_params"]) \
                 and (dataset_params["graph_construction_params"]["max_temporal_edge_length"] is not None)):
-                self.MAX_TEMPORAL_EDGE_LENGTH = dataset_params["graph_construction_params"]["max_temporal_edge_length"]
+                self.MAX_TEMPORAL_EDGE_LENGTH:int = dataset_params["graph_construction_params"]["max_temporal_edge_length"]
             
         else:
             self.SPATIAL_SHIFT_TIMEFRAMES = 20
             self.KNN_PARAM_TEMPORAL = 3
             self.KNN_PARAM_SPATIAL = 3
-            self.MAX_TEMPORAL_EDGE_LENGTH = 2
+            self.MAX_TEMPORAL_EDGE_LENGTH:int = 2
 
         # Data-child object for pytorch
         self.graph_obj:Graph = None
@@ -295,7 +295,7 @@ class NuscenesMotGraph(object):
                     self.graph_dataframe,
                     self.KNN_PARAM_TEMPORAL,
                     adapt_knn_param = self.adapt_knn_param,
-                    device= self.device)
+                    device= self.device, max_length_temporal_edges = self.MAX_TEMPORAL_EDGE_LENGTH)
         # assert compare_two_edge_indices_matrices(t_temporal_edge_ixs,t_temporal_edge_ixs_new),"New method does not return the same edge indices as the old method!!!"
         t_temporal_edge_ixs = t_temporal_edge_ixs_new
 
