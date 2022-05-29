@@ -44,7 +44,7 @@ dataset_params:
   # Contains a list of nuscenes class labels.
   # Only detections from these clases will be loaded for the graph
   # filterBoxes_categoryQuery: ['vehicle.car'] 
-  filterBoxes_categoryQuery: ['vehicle.car'] 
+  filterBoxes_categoryQuery: ['vehicle.bus'] #['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian', 'vehicle.trailer', 'vehicle.truck']
 
   # Graph Construction Parameters
   graph_construction_params:

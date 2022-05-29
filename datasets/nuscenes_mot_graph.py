@@ -17,7 +17,7 @@ from matplotlib.pyplot import box
 from sklearn.utils import deprecated
 from torch_geometric.transforms.to_undirected import ToUndirected
 from utility import filter_boxes, get_box_centers, is_same_instance
-from utils.nuscenes_helper_functions import is_valid_box, is_valid_box_torch, determine_class_id
+from utils.nuscenes_helper_functions import is_valid_box, is_valid_box_torch, determine_class_id, get_sample_data_table,skip_sample_token
 # For dummy objects
 from datasets.mot_graph import Graph
 from pyquaternion import Quaternion
@@ -91,6 +91,70 @@ class NuscenesMotGraph(object):
             boxes.append(box)
         return boxes
 
+    def _load_detections_from_frame_from_sensor(self, sample_token:str,
+                        sensor_channel:str, 
+                        load_given_detections:bool) -> List[Box]:
+        """
+        Returns a list of Box objects
+        Loads either sample_annotations as detections from nuscenes Database 
+            or from given Detections (e.g. baseline detections)
+        """
+        if load_given_detections:
+            pass
+        else:
+            # Append new boxes
+            sample = self.nuscenes_handle.get('sample', sample_token)
+            lidar_top_data_old = self.nuscenes_handle.get('sample_data', sample['data'][sensor_channel])
+            lidar_top_data = get_sample_data_table(self.nuscenes_handle, sensor_channel, sample_token)
+
+            _, boxes, _= self.nuscenes_handle.get_sample_data(lidar_top_data['token'], selected_anntokens=None, use_flat_vehicle_coordinates =False)
+            # filter out all object that are not of class self.filterBoxes_categoryQuery
+            if( self.filterBoxes_categoryQuery is not None):
+                boxes = filter_boxes(self.nuscenes_handle, boxes= boxes, categoryQuery= self.filterBoxes_categoryQuery)
+            
+            # If the graph is allowed to change and adapt to scenes with less than k objects, 
+            # then timeframes with at least one detection can be used to build a graph
+            if(self.adapt_knn_param == True and len(boxes)==0):
+                boxes.extend(self._construct_dummy_boxes(1))
+            # Embed dummy objects if number of objects is smaller then any knn-Parameter
+            # this will also catch cases where no objects are left after filtering 
+            # there must be at least k + 1 elements such that one element can have k neighbors
+            if ((len(boxes) < (self.KNN_PARAM_SPATIAL + 1)) \
+                or (len(boxes) < (self.KNN_PARAM_TEMPORAL + 1)))\
+                and (self.adapt_knn_param == False):
+                spatial_difference = self.KNN_PARAM_SPATIAL + 1 - len(boxes)
+                temporal_difference = self.KNN_PARAM_TEMPORAL + 1 - len(boxes)
+                num_needed_boxes = max(spatial_difference, temporal_difference)
+                boxes.extend(self._construct_dummy_boxes(num_needed_boxes))
+
+        return boxes
+
+    def _load_detections(self, graph_dataframe:dict ):
+        # Load Center points for features from LIDAR pointcloud frame of reference
+        sensor_channel = 'LIDAR_TOP'
+        sample_token = self.start_frame
+        load_given_detections = False
+        # Compute Dict of Lists of Box-objects mapped by integer value that references the timeframe
+        # append dict to graph_dataframe
+        boxes_dict= {}
+        for i in range(self.max_frame_dist):
+            boxes = self._load_detections_from_frame_from_sensor(sample_token, sensor_channel,load_given_detections)
+            boxes_dict[i] = boxes
+            #Move to next sample
+            sample_token = skip_sample_token(sample_token,0,self.nuscenes_handle)
+
+        graph_dataframe["boxes_dict"] = boxes_dict
+
+        # Combine all lists within boxes Dict into one list
+        # Add in chronological order
+        # append dict to graph_dataframe
+        box_list: List[Box] = []
+        for box_list_i_key in range(self.max_frame_dist):
+            box_list_i = graph_dataframe["boxes_dict"][box_list_i_key]
+            box_list = box_list + box_list_i
+
+        graph_dataframe["boxes_list_all"] = box_list
+
     def _construct_graph_dataframe(self):
         """
         Determines which frames will be in the graph, and creates a DataFrame with its detection's information.
@@ -101,39 +165,9 @@ class NuscenesMotGraph(object):
             graph_df: DataFrame with rows of scene_df between the selected frames
         """
         graph_dataframe = {}
-        # Load Center points for features from LIDAR pointcloud frame of reference
-        sensor = 'LIDAR_TOP'
-        sample_token = self.start_frame
+        self._load_detections(graph_dataframe)
+        boxes_dict = graph_dataframe["boxes_dict"]
 
-        # Compute Dict of Lists of Box-objects mapped by integer value that references the timeframe
-        # append dict to graph_dataframe
-        boxes_dict= {}
-        for i in range(self.max_frame_dist):
-            # Append new boxes
-            sample = self.nuscenes_handle.get('sample', sample_token)
-            lidar_top_data = self.nuscenes_handle.get('sample_data', sample['data'][sensor])
-            _, boxes, _= self.nuscenes_handle.get_sample_data(lidar_top_data['token'], selected_anntokens=None, use_flat_vehicle_coordinates =False)
-            # filter out all object that are not of class self.filterBoxes_categoryQuery
-            if( self.filterBoxes_categoryQuery is not None):
-                boxes = filter_boxes(self.nuscenes_handle, boxes= boxes, categoryQuery= self.filterBoxes_categoryQuery)
-            # Embed dummy objects if number of objects is smaller then any knn-Parameter
-            # this will also catch cases where no objects are left after filtering 
-            # there must be at least k + 1 elements such that one element can have k neighbors
-            if (len(boxes) < (self.KNN_PARAM_SPATIAL + 1)) \
-                or (len(boxes) < (self.KNN_PARAM_TEMPORAL + 1)):
-                print("num of objects is smaller than the KNN parameters")
-                spatial_difference = self.KNN_PARAM_SPATIAL + 1 - len(boxes)
-                temporal_difference = self.KNN_PARAM_TEMPORAL + 1 - len(boxes)
-                num_needed_boxes = max(spatial_difference, temporal_difference)
-                boxes.extend(self._construct_dummy_boxes(num_needed_boxes))
-                
-            boxes_dict[i] = boxes
-
-            #Move to next sample
-            sample_token = sample["next"]
-
-        graph_dataframe["boxes_dict"] = boxes_dict
-        
         # Compute Dict of Lists of Box-objects mapped by integer value that references the timeframe
         # append dict to graph_dataframe
         # Box memory is shared, so no new box memory space is allocated
@@ -146,16 +180,6 @@ class NuscenesMotGraph(object):
         graph_dataframe["centers_dict"] = centers_dict
         # print("centers_dict",centers_dict)
         # print("centers_dict",len(centers_dict))
-
-        # Combine all lists within boxes Dict into one list
-        # Add in chronological order
-        # append dict to graph_dataframe
-        box_list: List[Box] = []
-        for box_list_i_key in range(self.max_frame_dist):
-            box_list_i = graph_dataframe["boxes_dict"][box_list_i_key]
-            box_list = box_list + box_list_i
-
-        graph_dataframe["boxes_list_all"] = box_list
 
         # Combine all lists within centers Dict into one list
         # Add in chronological order
@@ -196,15 +220,6 @@ class NuscenesMotGraph(object):
         graph_dataframe["class_ids"] = class_ids
         assert (graph_dataframe["class_ids"]!=0).all(), "some nodes were not assigned a suitable class id"
         
-        # Add sample_token for each node. Important for evaluation
-        sample_tokens = []
-        for box in graph_dataframe["boxes_list_all"]:
-            annotation_token = box.token
-            annotation_table = self.nuscenes_handle.get('sample_annotation', annotation_token)
-            sample_tokens.append(annotation_table['sample_token'])
-        assert len(sample_tokens) == len(box_list)
-        graph_dataframe["sample_tokens"] = sample_tokens
-        
         # Add list of available sample_tokens in this graph
         available_sample_tokens: List[str] = []
         sample_token = self.start_frame
@@ -214,6 +229,17 @@ class NuscenesMotGraph(object):
             sample_token = sample["next"]
         assert available_sample_tokens[0] != available_sample_tokens[1]
         graph_dataframe["available_sample_tokens"] = available_sample_tokens
+
+        # Add sample_token for each node. Important for evaluation
+        sample_tokens = []
+        for timeframe_i in range(self.max_frame_dist):
+            boxes = graph_dataframe["boxes_dict"][timeframe_i]
+            num_boxes_timeframe_i = len(boxes)
+            current_sample_token = graph_dataframe["available_sample_tokens"][timeframe_i]
+            current_sample_list :List[str]= [current_sample_token for i in range(num_boxes_timeframe_i)]
+            sample_tokens.extend(current_sample_list)
+        assert len(sample_tokens) == len(graph_dataframe["boxes_list_all"])
+        graph_dataframe["sample_tokens"] = sample_tokens
 
         return graph_dataframe
 
@@ -231,12 +257,14 @@ class NuscenesMotGraph(object):
         #     print("Num objects: ",len(self.graph_dataframe["boxes_dict"][key]),' in frame: ', key)
         # Compute Spatial Edges
         t_spatial_edge_ixs = None
-        t_spatial_edge_ixs = get_and_compute_spatial_edge_indices(
-                    self.max_frame_dist,
-                    self.graph_dataframe,
-                    self.KNN_PARAM_SPATIAL,
-                    adapt_knn_param = self.adapt_knn_param,
-                    device= self.device)
+        
+        # t_spatial_edge_ixs = get_and_compute_spatial_edge_indices(
+        #             self.max_frame_dist,
+        #             self.graph_dataframe,
+        #             self.KNN_PARAM_SPATIAL,
+        #             adapt_knn_param = self.adapt_knn_param,
+        #             device= self.device)
+
         t_spatial_edge_ixs_new = get_and_compute_spatial_edge_indices_new(self.max_frame_dist,
                     self.graph_dataframe,
                     self.KNN_PARAM_SPATIAL,
@@ -578,52 +606,6 @@ class NuscenesMotGraphAnalyzer(NuscenesMotGraph):
 
     def _construct_graph_dataframe(self):
         graph_dataframe = {}
-        # Load Center points for features from LIDAR pointcloud frame of reference
-        sensor = 'LIDAR_TOP'
-        sample_token = self.start_frame
-
-        # Compute Dict of Lists of Box-objects mapped by integer value that references the timeframe
-        # append dict to graph_dataframe
-        boxes_dict= {}
-        for i in range(self.max_frame_dist):
-            # Append new boxes
-            sample = self.nuscenes_handle.get('sample', sample_token)
-            lidar_top_data = self.nuscenes_handle.get('sample_data', sample['data'][sensor])
-            _, boxes, _= self.nuscenes_handle.get_sample_data(lidar_top_data['token'], selected_anntokens=None, use_flat_vehicle_coordinates =False)
-            # filter out all object that are not of class self.filterBoxes_categoryQuery
-            if( self.filterBoxes_categoryQuery is not None):
-                boxes = filter_boxes(self.nuscenes_handle, boxes= boxes, categoryQuery= self.filterBoxes_categoryQuery)
-            
-            # If the graph is allowed to change and adapt to scenes with less than k objects, 
-            # then timeframes with at least one detection can be used to build a graph
-            if(self.adapt_knn_param == True and len(boxes)==0):
-                boxes.extend(self._construct_dummy_boxes(1))
-            # Embed dummy objects if number of objects is smaller then any knn-Parameter
-            # this will also catch cases where no objects are left after filtering 
-            # there must be at least k + 1 elements such that one element can have k neighbors
-            if ((len(boxes) < (self.KNN_PARAM_SPATIAL + 1)) \
-                or (len(boxes) < (self.KNN_PARAM_TEMPORAL + 1)))\
-                and (self.adapt_knn_param == False):
-                spatial_difference = self.KNN_PARAM_SPATIAL + 1 - len(boxes)
-                temporal_difference = self.KNN_PARAM_TEMPORAL + 1 - len(boxes)
-                num_needed_boxes = max(spatial_difference, temporal_difference)
-                boxes.extend(self._construct_dummy_boxes(num_needed_boxes))
-                
-            boxes_dict[i] = boxes
-
-            #Move to next sample
-            sample_token = sample["next"]
-
-        graph_dataframe["boxes_dict"] = boxes_dict
-
-        # Combine all lists within boxes Dict into one list
-        # Add in chronological order
-        # append dict to graph_dataframe
-        box_list = []
-        for box_list_i_key in range(self.max_frame_dist):
-            box_list_i = graph_dataframe["boxes_dict"][box_list_i_key]
-            box_list = box_list + box_list_i
-
-        graph_dataframe["boxes_list_all"] = box_list
+        self._load_detections(graph_dataframe)
 
         return graph_dataframe

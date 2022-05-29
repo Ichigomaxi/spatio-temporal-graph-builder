@@ -107,12 +107,19 @@ def is_valid_box_torch(box , center:torch.Tensor,spatial_shift_timeframes:int, d
     return False
 
 def determine_class_id(box_name:str):
+    """
+    Match the official nuscenes detection object class names:
+        e.g vehicle.car, vehicle.bus, ...
+    with the official nuscenes tracking class names: 
+        e.g. car, bus, pedestrian, truck, motorcycle, ...
+    """
     class_id = None
-    for name in ALL_NUSCENES_CLASS_NAMES:
-        if name in box_name:
-            class_id = id_from_name(name)
+    for tracking_class_name in ALL_NUSCENES_CLASS_NAMES:
+        if tracking_class_name in box_name:
+            class_id = id_from_name(tracking_class_name)
             return class_id
-    assert False, "Given Box_name does not contain a suitable class for the tracking challenge!!!!"
+    assert False, "Given Box_name does not contain a suitable class for the tracking challenge!\n"\
+            + "Given detection class name: {} \n".format(box_name)
 
 def skip_sample_token(sample_token:str, num_skip:int ,nuscenes_handle:NuScenes):
     '''

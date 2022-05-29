@@ -1,15 +1,10 @@
 from collections import defaultdict
-from ctypes import Union
+
 from enum import Enum
-from tabnanny import check
-from telnetlib import theNULL
-from turtle import distance
 from typing import Dict
 
 from sklearn.neighbors import NearestNeighbors
 
-from matplotlib.pyplot import axis
-from sklearn.utils import deprecated
 from utility import get_box_centers
 
 from enum import IntEnum
@@ -22,13 +17,20 @@ class edge_types(IntEnum):
 
 EDGE_FEATURE_COMPUTATION_MODE = {"relative_position", "edge_type"}
 
+
 class Timeframe(Enum):
+    """
+    deprecated
+    """
     t0 = 0
     t1 = 1
     t2 = 2
 
+
 class Graph(object):
-    """ Graph data structure, undirected by default.
+    """ 
+    deprecated
+    Graph data structure, undirected by default.
     Taken from https://stackoverflow.com/questions/19472530/representing-graphs-data-structure-in-python
     After consideration of different Data Structures: https://en.wikipedia.org/wiki/Graph_(abstract_data_type)#Representations
     """
@@ -72,8 +74,11 @@ class Graph(object):
     def __str__(self):
         return '{}({})'.format(self.__class__.__name__, dict(self._graph))
 
+
 class SpatioTemporalGraph(Graph):
-    """ Special Graph representation for spatio-temporal graphs
+    """
+    deprecated
+    Special Graph representation for spatio-temporal graphs
     Graph data structure, undirected by default.
     Taken from https://stackoverflow.com/questions/19472530/representing-graphs-data-structure-in-python
     After consideration of different Data Structures: https://en.wikipedia.org/wiki/Graph_(abstract_data_type)#Representations
@@ -135,9 +140,11 @@ class SpatioTemporalGraph(Graph):
         else:
             return AttributeError
 
-@deprecated
-def add_general_centers(centers_dict,spatial_shift_timeframes):
 
+def add_general_centers(centers_dict,spatial_shift_timeframes):
+    """
+    deprecated
+    """
     if len(centers_dict) == 3:
         _ ,centers0 =  centers_dict[0]
         _ ,centers1 =  centers_dict[1]
@@ -156,6 +163,7 @@ def add_general_centers(centers_dict,spatial_shift_timeframes):
         centers = np.append(centers, centers2, axis=0)
 
         centers_dict["all"] = centers
+
 def transform_knn_matrix_2_neighborhood_list_new(t_knn_matrix:torch.Tensor) -> torch.Tensor:
     """
     Returns indices of edges in reference to the stacked center indices.
