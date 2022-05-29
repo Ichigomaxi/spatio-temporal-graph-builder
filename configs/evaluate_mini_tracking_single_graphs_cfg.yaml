@@ -47,12 +47,12 @@ gpu_settings:
 
 dataset_params:
   # Preprocessing ParamsL
-  load_valid_sequence_sample_list : True
+  load_valid_sequence_sample_list : False
   # If the above is true then specify the path to the pickle files
   # Must be absolutepath until now
   # if mode not train or val then sequence_sample_list_train_path will be loaded into Dataset object
-  sequence_sample_list_train_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_mini_nuscenes/sequence_sample_list_mini_train.pkl'
-  sequence_sample_list_val_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_mini_nuscenes/sequence_sample_list_mini_val.pkl'
+  sequence_sample_list_train_path : #'/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_mini_nuscenes/sequence_sample_list_mini_train.pkl'
+  sequence_sample_list_val_path : #'/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_mini_nuscenes/sequence_sample_list_mini_val.pkl'
 
   # Dataset Processing params:
   dataset_version: 'v1.0-mini'
@@ -67,9 +67,10 @@ dataset_params:
 
   # Graph Construction Parameters
   graph_construction_params:
-    spatial_knn_num_neighbors: 3
-    temporal_knn_num_neighbors : 3
+    spatial_knn_num_neighbors: 4
+    temporal_knn_num_neighbors : 4
     spatial_shift_timeframes : 20
+    max_temporal_edge_length : 2
     
   max_frame_dist: 3 # Maximum number of frames contained in each graph sampled graph
   # Node Features
@@ -79,7 +80,7 @@ dataset_params:
   # Edge_Label Type
   label_type: "binary" # "binary" or "multiclass"
   # Choose how Graph construction should be handled
-  adapt_knn_param: False # if number of objects is below the KNN-Param then K
+  adapt_knn_param: True # if number of objects is below the KNN-Param then K
 
   # Data Augmentation Params
   augment: False # Determines whether data augmentation is performed
