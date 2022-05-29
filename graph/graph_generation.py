@@ -156,6 +156,26 @@ def add_general_centers(centers_dict,spatial_shift_timeframes):
         centers = np.append(centers, centers2, axis=0)
 
         centers_dict["all"] = centers
+def transform_knn_matrix_2_neighborhood_list_new(t_knn_matrix:torch.Tensor) -> torch.Tensor:
+    """
+    Returns indices of edges in reference to the stacked center indices.
+    No selfreferencing!
+    t_knn_matrix: tensor. first column contains current node_idx, all following k coloumns contain the knn-neighbors-indices
+    
+    """
+    num_nodes = t_knn_matrix.shape[0]
+    k = t_knn_matrix.shape[1] - 1 
+    edge_indices = torch.empty(num_nodes * k, 2)
+
+    edge_indices_list = []
+    current_node_idx = t_knn_matrix[:,0]
+    for i in range(k):
+        l_th_neighbor = i+1
+        edge_indices_l = torch.stack([current_node_idx, t_knn_matrix[:,l_th_neighbor]], dim=1)
+        edge_indices_list.append(edge_indices_l)
+
+    edge_indices = torch.cat(edge_indices_list,dim = 0)
+    return edge_indices
 
 def transform_knn_matrix_2_neighborhood_list(t_knn_matrix:torch.Tensor,
             node_list_length:int) -> torch.Tensor:
@@ -198,7 +218,23 @@ def is_invalid_frame(graph_dataframe:Dict,knn_param:int):
 
     return invalid_frames
 
-def get_and_compute_spatial_edge_indices_new( graph_dataframe:Dict,\
+def compare_two_edge_indices_matrices(edge_indices_a:torch.Tensor,edge_indices_b:torch.Tensor):
+    list_a = edge_indices_a.tolist()
+    list_b = edge_indices_b.tolist()
+
+    set_a = set([tuple(indices_pair) for indices_pair in list_a])
+    set_b = set([tuple(indices_pair) for indices_pair in list_b])
+
+    set_difference = set_a - set_b
+
+    if set_difference:
+        return False
+    else:
+        return True
+
+def get_and_compute_spatial_edge_indices_new( 
+        frames_per_graph:int , 
+        graph_dataframe:Dict,\
         knn_param:int, 
         self_referencing_edges:bool = False,
         adapt_knn_param = False,
@@ -221,9 +257,59 @@ def get_and_compute_spatial_edge_indices_new( graph_dataframe:Dict,\
     invalid_frames = None
     if adapt_knn_param:
         invalid_frames = is_invalid_frame(graph_dataframe, knn_param)
+    #Init indices list
+    spatial_indices = []
+
+    num_spatial_nodes_considered = 0 
+    for i in range(frames_per_graph):
+        ############################################
+        # Build spatial graph for timeframe i
+        
+        # Get individual nodes for timeframe i
+        _, centers = graph_dataframe["centers_dict"][i]
+
+        # Adapt K-NN parameter
+        knn_param_temp_i = knn_param_temp
+        if invalid_frames is not None:
+            if (invalid_frames[0]):
+                knn_param_temp_i = len(centers)
+        
+        #Compute K nearest neighbors
+        # print("knn_param_temp_i: ",knn_param_temp_i)
+        # print("length num obj target: ",len(centers0))
+        nbrs_i = NearestNeighbors(n_neighbors=knn_param_temp_i, algorithm='ball_tree').fit(centers)
+
+        # Array contains the nodes id in the first column and all knn-neighbor-indices in the following columns 
+        spatial_indices_i:np.ndarray = nbrs_i.kneighbors(centers, return_distance=False)
+        
+        #Remove the self referencing edge connection
+        if (self_referencing_edges==False):
+            spatial_indices_i_old = spatial_indices_i
+            spatial_indices_i = spatial_indices_i[:, 1:]
+        # New way to compute the indices
+        t_spatial_indices_i_old:torch.Tensor = torch.from_numpy(spatial_indices_i_old).to(device)
+        t_edge_indices_i_new = transform_knn_matrix_2_neighborhood_list_new(t_spatial_indices_i_old)
+        # Old way to compute the indices
+        t_spatial_indices_i:torch.Tensor = torch.from_numpy(spatial_indices_i).to(device)
+        num_spatial_nodes_i = centers.shape[0]
+        t_edge_indices_i = transform_knn_matrix_2_neighborhood_list(t_spatial_indices_i, num_spatial_nodes_i).to(device)
+
+        assert compare_two_edge_indices_matrices(t_edge_indices_i,t_edge_indices_i_new)
+
+        # Increase Edge_indices by the number of past nodes that already have been considered
+        t_edge_indices_i += num_spatial_nodes_considered
+        num_spatial_nodes_considered += num_spatial_nodes_i
+    
+        spatial_indices.append(t_edge_indices_i)
+
+    t_spatial_indices = torch.cat(spatial_indices, dim=0).to(device)
+
+    return t_spatial_indices
     
 
-def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
+def get_and_compute_spatial_edge_indices( 
+        frames_per_graph:int , 
+        graph_dataframe:Dict,
         knn_param:int, 
         self_referencing_edges:bool = False,
         adapt_knn_param = False,
@@ -321,11 +407,83 @@ def get_and_compute_spatial_edge_indices( graph_dataframe:Dict,\
     t_edge_indices_2 = transform_knn_matrix_2_neighborhood_list(t_spatial_indices_2, num_spatial_nodes_2).to(device)
     t_edge_indices_2 += (num_spatial_nodes_1) + (num_spatial_nodes_0)
     spatial_indices.append(t_edge_indices_2)
+
     t_spatial_indices = torch.cat(spatial_indices, dim=0).to(device)
 
     return t_spatial_indices
 
-def get_and_compute_temporal_edge_indices( graph_dataframe:Dict,\
+def build_temporal_connections(temporal_pointpairs, all_nodes ,current_nodes_i, following_nodes_j, knn_param, self_referencing_edges):
+    for i in range(len(current_nodes_i)):
+        center = current_nodes_i[i]
+        center = np.expand_dims(center,axis=0)
+        temp = np.append(following_nodes_j,center,axis=0)
+        #Find nearest_neigbor
+        nearest_neigbor = NearestNeighbors(n_neighbors=knn_param, algorithm='ball_tree').fit(temp)
+        temporal_indices = nearest_neigbor.kneighbors(temp, return_distance=False)
+        #Remove the self referencing edge connection
+        if (self_referencing_edges==False):
+            temporal_indices = temporal_indices[:,1:]
+        #Add indices into a list
+        for index in temporal_indices[-1]:
+            #adapt the index to the global indexing
+            # temporal_pointpairs.append([i, index + len(current_nodes_i)])
+
+            # find global indices and append them
+            reference_node_global_index = np.argwhere(all_nodes == center)[0,0]
+            neighbor_node_global_index = np.argwhere(all_nodes == temp[index])[0,0] 
+            temporal_pointpairs.append([reference_node_global_index ,\
+                neighbor_node_global_index ])
+
+def get_and_compute_temporal_edge_indices_new(frames_per_graph:int , 
+        graph_dataframe:Dict,
+        knn_param:int, self_referencing_edges:bool = False,
+        adapt_knn_param = False,
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        )-> torch.Tensor:
+    '''
+    Returns indices of edges in reference to the stacked center indices.
+    Returns:
+    t_temporal_pointpairs:torch interger tensor (num_edges,2)
+    '''
+    # increase knn param because one column will be removed since it 
+    # is the self referencing edge connection
+    knn_param_temp = None
+    if(self_referencing_edges==False):
+        knn_param_temp = knn_param + 1
+    else:
+        knn_param_temp = knn_param
+    
+    # check if number of object centers is less than the number of neighbors k needed for  KNN
+    invalid_frames = None
+    if adapt_knn_param:
+        invalid_frames = is_invalid_frame(graph_dataframe,knn_param)
+        print('invalid_frames',invalid_frames)
+
+    temporal_pointpairs = []
+     # print(centers_dict)
+    # Get individual centers
+    current_nodes_i = graph_dataframe["centers_dict"][i]
+    following_nodes_j =  graph_dataframe["centers_dict"][j]
+
+    # centers = centers_dict["all"]
+    all_nodes = graph_dataframe["centers_list_all"].cpu().numpy()
+
+     # Adapt K-NN parameter according to target time-frame 
+    target_frame = 1
+    knn_param_temp_0_to_1 = knn_param_temp
+    if invalid_frames is not None:
+        if (invalid_frames[target_frame]):
+            knn_param_temp_0_to_1 = len(graph_dataframe["centers_dict"][target_frame])
+            # print("knn_param_temp_1_to_2: ",knn_param_temp_0_to_1)
+            # print("length num obj target: ",len(graph_dataframe["centers_dict"][target_frame]))
+
+    # connect frame-0-nodes with frame-1-nodes
+    build_temporal_connections(temporal_pointpairs, all_nodes ,current_nodes_i, following_nodes_j, knn_param, self_referencing_edges)
+    
+
+def get_and_compute_temporal_edge_indices(
+        frames_per_graph:int , 
+        graph_dataframe:Dict,
         knn_param:int, self_referencing_edges:bool = False,
         adapt_knn_param = False,
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -97,6 +97,7 @@ class NuscenesMOTGraphDataset(object):
                 scene_names = splits['val']
             elif 'test' in self.mode:
                 scene_names = splits['test']
+            print("Loading Custom selected scenes:", scene_names )
         else:
             # official nuscenes split
             dict_splits_to_scene_names = self.nuscenes_dataset.splits_to_scene_names
@@ -163,7 +164,7 @@ class NuscenesMOTGraphDataset(object):
         print('---------------------------------------------')
 
         #TODO
-        # Filter if num_objects less than KNN -param
+        # Filter if num_objects less than KNN -param or 1 
         print("Filtering Process:\n Check if any Mot Graph are not buildable due to lack of detections")
         start = time.time()
         

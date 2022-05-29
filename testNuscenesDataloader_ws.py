@@ -45,8 +45,9 @@ def cfg( eval_params, dataset_params, graph_model_params, data_splits):
     # graph_model_params['encoder_feats_dict']['edge_in_dim'] = len(dataset_params['edge_feats_to_use'])
 
     # If we're training on all the available training data, disable validation
-    if data_splits['train'] =='all_train' or data_splits['val'] is None:
-        data_splits['val'] = []
+    # if data_splits['train'] =='all_train' or data_splits['val'] is None:
+    #     data_splits['val'] = []
+    pass
 
 
 @ex.automain
@@ -56,7 +57,7 @@ def main(_config, _run):
     make_deterministic(12345)
     hparams_dict = dict(_config)
     # pytorch lightning model
-    model = MOTNeuralSolver(hparams = hparams_dict)
+    # model = MOTNeuralSolver(hparams = hparams_dict)
 
     run_str, save_dir = get_run_str_and_save_dir(_config['run_id'], _config['cross_val_split'], _config['add_date'])
 
@@ -94,10 +95,10 @@ def main(_config, _run):
     # devices = _config['gpu_settings']['device_id']
 
     
-    trainer = Trainer(
-                    gpus=_config['gpu_settings']['device_id'],
-                    callbacks=[ckpt_callback],
-                    max_epochs=_config['train_params']['num_epochs'],
-                    logger =logger,
-                    )
-    trainer.fit(model,train_loader,eval_loader)
+    # trainer = Trainer(
+    #                 gpus=_config['gpu_settings']['device_id'],
+    #                 callbacks=[ckpt_callback],
+    #                 max_epochs=_config['train_params']['num_epochs'],
+    #                 logger =logger,
+    #                 )
+    # trainer.fit(model,train_loader,eval_loader)

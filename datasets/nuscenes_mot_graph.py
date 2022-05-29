@@ -1,5 +1,6 @@
 # from ctypes import Union
 from pickle import TRUE
+from tkinter.tix import Tree
 from turtle import shape
 from typing import Dict, List, Union
 from matplotlib.style import available
@@ -8,8 +9,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from graph.graph_generation import (compute_edge_feats_dict,
-                                    get_and_compute_spatial_edge_indices,
-                                    get_and_compute_temporal_edge_indices)
+                                    get_and_compute_spatial_edge_indices,compare_two_edge_indices_matrices,
+                                    get_and_compute_temporal_edge_indices,get_and_compute_spatial_edge_indices_new)
 from groundtruth_generation.nuscenes_create_gt import (
     generate_edge_label_one_hot, generate_flow_labels)
 from matplotlib.pyplot import box
@@ -162,11 +163,11 @@ class NuscenesMotGraph(object):
         # Ensure that the memory is different than that from the Box-objects
         # List is torch.Tensor
         # append dict to graph_dataframe
-        t_centers_list = torch.empty((0,3)).to(self.device)
+        t_centers_list:torch.Tensor = torch.empty((0,3)).to(self.device)
         for centers_list_i_key in range(self.max_frame_dist):
             _ ,centers_list_i = graph_dataframe["centers_dict"][centers_list_i_key]
-            centers_list_i = centers_list_i.copy()
-            t_centers_list_i = torch.from_numpy(centers_list_i).to(self.device)
+            centers_list_i:np.ndarray = centers_list_i.copy()
+            t_centers_list_i:torch.Tensor = torch.from_numpy(centers_list_i).to(self.device)
             # print("t_centers_list_i",t_centers_list_i)
             # print("t_centers_list_i.shape",t_centers_list_i.shape)
             t_centers_list_i += torch.tensor([0,0,self.SPATIAL_SHIFT_TIMEFRAMES * centers_list_i_key]).to(self.device)
@@ -229,13 +230,24 @@ class NuscenesMotGraph(object):
         # for key in self.graph_dataframe["boxes_dict"]:
         #     print("Num objects: ",len(self.graph_dataframe["boxes_dict"][key]),' in frame: ', key)
         # Compute Spatial Edges
+        t_spatial_edge_ixs = None
         t_spatial_edge_ixs = get_and_compute_spatial_edge_indices(
+                    self.max_frame_dist,
                     self.graph_dataframe,
                     self.KNN_PARAM_SPATIAL,
                     adapt_knn_param = self.adapt_knn_param,
                     device= self.device)
+        t_spatial_edge_ixs_new = get_and_compute_spatial_edge_indices_new(self.max_frame_dist,
+                    self.graph_dataframe,
+                    self.KNN_PARAM_SPATIAL,
+                    adapt_knn_param = self.adapt_knn_param,
+                    device= self.device)
+        
+        assert compare_two_edge_indices_matrices(t_spatial_edge_ixs_new,t_spatial_edge_ixs),"New method does not return the same edge indices as the old method!!!"
+
         # Compute Temporal Edges
         t_temporal_edge_ixs = get_and_compute_temporal_edge_indices(
+                    self.max_frame_dist,
                     self.graph_dataframe,
                     self.KNN_PARAM_TEMPORAL,
                     adapt_knn_param = self.adapt_knn_param,
@@ -581,11 +593,17 @@ class NuscenesMotGraphAnalyzer(NuscenesMotGraph):
             # filter out all object that are not of class self.filterBoxes_categoryQuery
             if( self.filterBoxes_categoryQuery is not None):
                 boxes = filter_boxes(self.nuscenes_handle, boxes= boxes, categoryQuery= self.filterBoxes_categoryQuery)
+            
+            # If the graph is allowed to change and adapt to scenes with less than k objects, 
+            # then timeframes with at least one detection can be used to build a graph
+            if(self.adapt_knn_param == True and len(boxes)==0):
+                boxes.extend(self._construct_dummy_boxes(1))
             # Embed dummy objects if number of objects is smaller then any knn-Parameter
             # this will also catch cases where no objects are left after filtering 
             # there must be at least k + 1 elements such that one element can have k neighbors
             if (len(boxes) < (self.KNN_PARAM_SPATIAL + 1)) \
-                or (len(boxes) < (self.KNN_PARAM_TEMPORAL + 1)):
+                or (len(boxes) < (self.KNN_PARAM_TEMPORAL + 1)
+                and self.adapt_knn_param == False):
                 spatial_difference = self.KNN_PARAM_SPATIAL + 1 - len(boxes)
                 temporal_difference = self.KNN_PARAM_TEMPORAL + 1 - len(boxes)
                 num_needed_boxes = max(spatial_difference, temporal_difference)

@@ -49,8 +49,9 @@ def cfg( eval_params, dataset_params, graph_model_params, data_splits):
     # graph_model_params['encoder_feats_dict']['edge_in_dim'] = len(dataset_params['edge_feats_to_use'])
 
     # If we're training on all the available training data, disable validation
-    if data_splits['train'] =='all_train' or data_splits['val'] is None:
-        data_splits['val'] = []
+    # if data_splits['train'] =='all_train' or data_splits['val'] is None:
+    #     data_splits['val'] = []
+    pass
 
 @ex.automain
 def main(_config, _run):
