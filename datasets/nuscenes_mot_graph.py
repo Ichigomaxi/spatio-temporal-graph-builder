@@ -3,28 +3,35 @@ from pickle import TRUE
 from tkinter.tix import Tree
 from turtle import shape
 from typing import Dict, List, Union
-from matplotlib.style import available
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-from graph.graph_generation import (compute_edge_feats_dict,
-                                    get_and_compute_spatial_edge_indices,compare_two_edge_indices_matrices,
-                                    get_and_compute_temporal_edge_indices,get_and_compute_spatial_edge_indices_new)
+from graph.graph_generation import (compare_two_edge_indices_matrices,
+                                    compute_edge_feats_dict,
+                                    get_and_compute_spatial_edge_indices,
+                                    get_and_compute_spatial_edge_indices_new,
+                                    get_and_compute_temporal_edge_indices,
+                                    get_and_compute_temporal_edge_indices_new)
 from groundtruth_generation.nuscenes_create_gt import (
     generate_edge_label_one_hot, generate_flow_labels)
 from matplotlib.pyplot import box
+from matplotlib.style import available
+from pyquaternion import Quaternion
 from sklearn.utils import deprecated
 from torch_geometric.transforms.to_undirected import ToUndirected
 from utility import filter_boxes, get_box_centers, is_same_instance
-from utils.nuscenes_helper_functions import is_valid_box, is_valid_box_torch, determine_class_id, get_sample_data_table,skip_sample_token
+from utils.nuscenes_helper_functions import (determine_class_id,
+                                             get_sample_data_table,
+                                             is_valid_box, is_valid_box_torch,
+                                             skip_sample_token)
+
 # For dummy objects
 from datasets.mot_graph import Graph
-from pyquaternion import Quaternion
-
 from nuscenes import NuScenes
 from nuscenes.utils.data_classes import Box
 from nuscenes.utils.geometry_utils import transform_matrix
+
 # from utils.graph import get_knn_mask
 
 class NuscenesMotGraph(object):
@@ -253,33 +260,37 @@ class NuscenesMotGraph(object):
             edge_ixs: torch.tensor withs shape (2, num_edges) describes indices of edges, 
             edge_feats_dict: dict with edge features, mainly torch.Tensors e.g (num_edges, num_edge_features)
         """
-        # for key in self.graph_dataframe["boxes_dict"]:
-        #     print("Num objects: ",len(self.graph_dataframe["boxes_dict"][key]),' in frame: ', key)
         # Compute Spatial Edges
         t_spatial_edge_ixs = None
-        
         # t_spatial_edge_ixs = get_and_compute_spatial_edge_indices(
         #             self.max_frame_dist,
         #             self.graph_dataframe,
         #             self.KNN_PARAM_SPATIAL,
         #             adapt_knn_param = self.adapt_knn_param,
         #             device= self.device)
-
         t_spatial_edge_ixs_new = get_and_compute_spatial_edge_indices_new(self.max_frame_dist,
                     self.graph_dataframe,
                     self.KNN_PARAM_SPATIAL,
                     adapt_knn_param = self.adapt_knn_param,
                     device= self.device)
-        
-        assert compare_two_edge_indices_matrices(t_spatial_edge_ixs_new,t_spatial_edge_ixs),"New method does not return the same edge indices as the old method!!!"
+        t_spatial_edge_ixs = t_spatial_edge_ixs_new
+        # assert compare_two_edge_indices_matrices(t_spatial_edge_ixs_new,t_spatial_edge_ixs),"New method does not return the same edge indices as the old method!!!"
 
         # Compute Temporal Edges
+        t_temporal_edge_ixs = None
         t_temporal_edge_ixs = get_and_compute_temporal_edge_indices(
                     self.max_frame_dist,
                     self.graph_dataframe,
                     self.KNN_PARAM_TEMPORAL,
                     adapt_knn_param = self.adapt_knn_param,
                     device= self.device)
+        t_temporal_edge_ixs_new = get_and_compute_temporal_edge_indices_new(
+                    self.max_frame_dist,
+                    self.graph_dataframe,
+                    self.KNN_PARAM_TEMPORAL,
+                    adapt_knn_param = self.adapt_knn_param,
+                    device= self.device)
+        assert compare_two_edge_indices_matrices(t_temporal_edge_ixs,t_temporal_edge_ixs_new),"New method does not return the same edge indices as the old method!!!"
 
         #TODO Join temporal and spatial edges but also generate a mask to filter them
         

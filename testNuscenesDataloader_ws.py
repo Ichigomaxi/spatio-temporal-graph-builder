@@ -84,13 +84,18 @@ def main(_config, _run):
             print("Train-Batch:",i)
             print(batch)
         else:
-            break
+            # break
+            print("Train-Batch:",i)
+            print(batch)
     for i, batch in enumerate(eval_loader):
         if(i< 10):
             print("Eval-Batch:",i)
             print(batch)
         else:
-            break
+            # break
+            print("Train-Batch:",i)
+            print(batch)
+        
     # accelerator = _config['gpu_settings']['device_type']
     # devices = _config['gpu_settings']['device_id']
 
