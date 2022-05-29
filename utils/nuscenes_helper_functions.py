@@ -93,7 +93,7 @@ def is_valid_box(box , center:np.ndarray,spatial_shift_timeframes, num_frames = 
     
     return False
 
-def is_valid_box_torch(box , center:torch.Tensor,spatial_shift_timeframes:int, device:torch.device, num_frames = 3 ):
+def is_valid_box_torch(box , center:torch.Tensor,spatial_shift_timeframes:int, device:torch.device, num_frames:int):
     offset = 0
     t_box_center = torch.from_numpy(box.center).to(device)
     center = center.to(device)

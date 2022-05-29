@@ -61,11 +61,17 @@ class NuscenesMotGraph(object):
             self.KNN_PARAM_SPATIAL = dataset_params["graph_construction_params"]["spatial_knn_num_neighbors"]
             self.KNN_PARAM_TEMPORAL = dataset_params["graph_construction_params"]["temporal_knn_num_neighbors"]
             self.SPATIAL_SHIFT_TIMEFRAMES = dataset_params["graph_construction_params"]["spatial_shift_timeframes"]
+
+            self.MAX_TEMPORAL_EDGE_LENGTH = self.max_frame_dist - 1
+            if (("max_temporal_edge_length" in  dataset_params["graph_construction_params"]) \
+                and (dataset_params["graph_construction_params"]["max_temporal_edge_length"] is not None)):
+                self.MAX_TEMPORAL_EDGE_LENGTH = dataset_params["graph_construction_params"]["max_temporal_edge_length"]
             
         else:
             self.SPATIAL_SHIFT_TIMEFRAMES = 20
             self.KNN_PARAM_TEMPORAL = 3
             self.KNN_PARAM_SPATIAL = 3
+            self.MAX_TEMPORAL_EDGE_LENGTH = 2
 
         # Data-child object for pytorch
         self.graph_obj:Graph = None
@@ -278,19 +284,20 @@ class NuscenesMotGraph(object):
 
         # Compute Temporal Edges
         t_temporal_edge_ixs = None
-        t_temporal_edge_ixs = get_and_compute_temporal_edge_indices(
-                    self.max_frame_dist,
-                    self.graph_dataframe,
-                    self.KNN_PARAM_TEMPORAL,
-                    adapt_knn_param = self.adapt_knn_param,
-                    device= self.device)
+        # t_temporal_edge_ixs = get_and_compute_temporal_edge_indices(
+        #             self.max_frame_dist,
+        #             self.graph_dataframe,
+        #             self.KNN_PARAM_TEMPORAL,
+        #             adapt_knn_param = self.adapt_knn_param,
+        #             device= self.device)
         t_temporal_edge_ixs_new = get_and_compute_temporal_edge_indices_new(
                     self.max_frame_dist,
                     self.graph_dataframe,
                     self.KNN_PARAM_TEMPORAL,
                     adapt_knn_param = self.adapt_knn_param,
                     device= self.device)
-        assert compare_two_edge_indices_matrices(t_temporal_edge_ixs,t_temporal_edge_ixs_new),"New method does not return the same edge indices as the old method!!!"
+        # assert compare_two_edge_indices_matrices(t_temporal_edge_ixs,t_temporal_edge_ixs_new),"New method does not return the same edge indices as the old method!!!"
+        t_temporal_edge_ixs = t_temporal_edge_ixs_new
 
         #TODO Join temporal and spatial edges but also generate a mask to filter them
         
@@ -433,11 +440,11 @@ class NuscenesMotGraph(object):
                 # Check that car_box and car_centers match
                 if not (is_valid_box_torch(node_a_box,node_a_center,
                         spatial_shift_timeframes= self.SPATIAL_SHIFT_TIMEFRAMES,
-                        device= self.device)\
+                        device= self.device, num_frames = self.max_frame_dist)\
                         and 
                         is_valid_box_torch(node_b_box,node_b_center,
                         spatial_shift_timeframes= self.SPATIAL_SHIFT_TIMEFRAMES,
-                        device = self.device)
+                        device = self.device, num_frames = self.max_frame_dist)
                         ):
                     raise ValueError('A box does not correspond to a selected center')
 

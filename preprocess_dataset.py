@@ -4,7 +4,7 @@ import pickle
 import sacred
 from sacred import Experiment
 
-from utils.misc import make_deterministic, get_run_str
+from utils.misc import make_deterministic, get_run_str, save_sacred_config
 
 from utils.path_cfg import OUTPUT_PATH
 import os.path as osp
@@ -37,8 +37,10 @@ def main(_config, _run):
     sacred.commands.print_config(_run)
     make_deterministic(12345)
     hparams_dict = dict(_config)
-    # pytorch lightning model
+    
     run_str = get_run_str(_config['run_id'], _config['cross_val_split'], _config['add_date'])
+    output_path = osp.join( _config['output_path'], "dataset", run_str )
+    save_sacred_config(output_path,_config)
     #########################################
     # Load Data 
    
@@ -54,24 +56,25 @@ def main(_config, _run):
     filename_train = "sequence_sample_list_" + _config["train_dataset_mode"] + ".pkl"
     filename_val = "sequence_sample_list_" + _config["eval_dataset_mode"] + ".pkl"
 
-    filepath_train = osp.join( _config['output_path'], "dataset", run_str ,filename_train)
-    filepath_val = osp.join( _config['output_path'], "dataset", run_str ,filename_val)
+    filepath_train = osp.join( output_path,filename_train)
+    filepath_val = osp.join( output_path,filename_val)
     
     os.makedirs(os.path.dirname(filepath_train), exist_ok=True)
     os.makedirs(os.path.dirname(filepath_val), exist_ok=True)
+
     # Dump into file (save)
     with open(filepath_train, 'wb') as f:
         sequence_sample_list = train_dataset.seq_frame_ixs
-        pickle.dump(sequence_sample_list, f)
+        pickle.dump(sequence_sample_list, f,protocol=4)
     
     with open(filepath_val, 'wb') as f:
         sequence_sample_list = eval_dataset.seq_frame_ixs
-        pickle.dump(sequence_sample_list, f)
+        pickle.dump(sequence_sample_list, f,protocol=4)
     # Possible to load with the following code 
     # Uncomment only for demonstration purposes
-    #  
-    # sequence_sample_list = []
-    # with open(filepath_train, 'rb') as f:
-    #     sequence_sample_list = pickle.load(f)
-    #     print (sequence_sample_list)
+     
+    sequence_sample_list = []
+    with open(filepath_train, 'rb') as f:
+        sequence_sample_list = pickle.load(f)
+        print (sequence_sample_list)
     ###################################

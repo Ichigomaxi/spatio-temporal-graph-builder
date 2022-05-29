@@ -211,18 +211,21 @@ def transform_knn_matrix_2_neighborhood_list(t_knn_matrix:torch.Tensor,
 def is_invalid_frame(graph_dataframe:Dict,knn_param:int):
     """
     Returns Dict of Bools, which determine if number of 
-    object centers is lower than knn-parameter
+    object centers is lower or equal than knn-parameter! This is important than only a frame with k+1 objects can generate k-neighbors
+
     Adopts keys from graph_dataframe["centers_dict"] or graph_dataframe["boxes_dict"]
+    keys = timeframes
+
     """
     invalid_frames= {}
 
-    for key in graph_dataframe["boxes_dict"]:
-        boxes_i = graph_dataframe["boxes_dict"][key]
+    for frame_i in graph_dataframe["boxes_dict"]:
+        boxes_i = graph_dataframe["boxes_dict"][frame_i]
         num_object_in_frame_i = len(boxes_i)
-        if num_object_in_frame_i < knn_param:
-            invalid_frames[key] = True
+        if num_object_in_frame_i <= knn_param:
+            invalid_frames[frame_i] = True
         else:
-            invalid_frames[key] = False
+            invalid_frames[frame_i] = False
 
     return invalid_frames
 
@@ -295,6 +298,9 @@ def get_and_compute_spatial_edge_indices_new(
         if len(centers) == 1:
             t_edge_indices_i = torch.tensor([],dtype=torch.long).to(device) # There are no spatial connections if there is only one object
         else:
+            if(knn_param_temp_i > len(centers)) :
+                print(knn_param_temp_i)
+            assert knn_param_temp_i <= len(centers), "invalid k-nnpara! k-nn must be k <= num_objects "
             # Compute KNN-Estimator
             nbrs_i = NearestNeighbors(n_neighbors=knn_param_temp_i, algorithm='ball_tree').fit(centers)
 
@@ -488,7 +494,7 @@ def get_and_compute_temporal_edge_indices_new(
     invalid_frames = None
     if adapt_knn_param:
         invalid_frames = is_invalid_frame(graph_dataframe,knn_param)
-        print('invalid_frames',invalid_frames)
+        # print('invalid_frames',invalid_frames)
 
     temporal_pointpairs = []
 
@@ -550,7 +556,7 @@ def get_and_compute_temporal_edge_indices(
     invalid_frames = None
     if adapt_knn_param:
         invalid_frames = is_invalid_frame(graph_dataframe,knn_param)
-        print('invalid_frames',invalid_frames)
+        # print('invalid_frames',invalid_frames)
 
     temporal_pointpairs = []
 

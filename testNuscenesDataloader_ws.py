@@ -56,27 +56,18 @@ def main(_config, _run):
     sacred.commands.print_config(_run)
     make_deterministic(12345)
     hparams_dict = dict(_config)
-    # pytorch lightning model
-    # model = MOTNeuralSolver(hparams = hparams_dict)
 
     run_str, save_dir = get_run_str_and_save_dir(_config['run_id'], _config['cross_val_split'], _config['add_date'])
-
-    if _config['train_params']['tensorboard']:
-        logger = TensorBoardLogger(OUTPUT_PATH, name='experiments', version=run_str)
-
-    else:
-        logger = None
-
-    ckpt_callback = ModelCheckpoint(save_epoch_start = _config['train_params']['save_epoch_start'],
-                                    save_every_epoch = _config['train_params']['save_every_epoch'])
     
     #########################################
     # Load Data 
-    train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_train",device=_config['gpu_settings']['torch_device'])
-    train_loader = DataLoader(train_dataset,batch_size = _config['train_params']['batch_size'])
+    train_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode =_config["train_dataset_mode"],device=_config['gpu_settings']['torch_device'])
+    train_loader = DataLoader(train_dataset,batch_size = 8)
 
-    eval_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], mode ="mini_val",device=_config['gpu_settings']['torch_device'])
-    eval_loader = DataLoader(eval_dataset,batch_size = _config['train_params']['batch_size'])
+    eval_dataset = NuscenesMOTGraphDataset(_config['dataset_params'], 
+                    mode =_config["eval_dataset_mode"],
+                    device=_config['gpu_settings']['torch_device'], nuscenes_handle=train_dataset.get_nuscenes_handle())
+    eval_loader = DataLoader(eval_dataset,batch_size = 8)
     
     ###################################
     for i, batch in enumerate(train_loader):
@@ -95,15 +86,3 @@ def main(_config, _run):
             # break
             print("Train-Batch:",i)
             print(batch)
-        
-    # accelerator = _config['gpu_settings']['device_type']
-    # devices = _config['gpu_settings']['device_id']
-
-    
-    # trainer = Trainer(
-    #                 gpus=_config['gpu_settings']['device_id'],
-    #                 callbacks=[ckpt_callback],
-    #                 max_epochs=_config['train_params']['num_epochs'],
-    #                 logger =logger,
-    #                 )
-    # trainer.fit(model,train_loader,eval_loader)
