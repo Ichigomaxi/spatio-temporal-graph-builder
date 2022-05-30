@@ -16,6 +16,7 @@ from cv2 import threshold
 
 import numpy as np
 import pandas as pd
+from sklearn.utils import assert_all_finite
 from tensorboard import summary
 import torch
 from datasets.NuscenesDataset import NuscenesDataset
@@ -224,139 +225,319 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph, tracking_threshold
     rows = source_nodes, columns = target_nodes
 
     Saves variables in graph_object (Graph):
-    mot_graph.graph_obj.active_edges: torch.ByteTensor, shape(num_edges), True if connecting a target_node with corresponding active neighbor  
+    mot_graph.graph_obj.active_edges: torch.ByteTensor, shape(num_edges), True if connecting a target_node with corresponding active neighbor
     mot_graph.graph_obj.tracking_confidence: torch.LongTensor, shape(num_edges), contains edge_predictions of corresponding active edges
     mot_graph.graph_obj.active_neighbors: torch.IntTensor, shape(num_edges) , contains the node_index of the corresponding active neighbor  
 
     Returns: void 
     '''
+    def activate_edge_state(active_edge_id:torch.Tensor,
+                tracking_confidence:torch.Tensor,
+                active_neighbor_node_index:torch.Tensor,
+                active_connections:torch.Tensor, 
+                tracking_confidence_list:torch.Tensor,
+                active_neighbors:torch.Tensor ):
+        # Describes if an edge is active or inactive. 
+        # If not active the element is NaN
+        active_connections[active_edge_id] = 1 
+        # safe the confidence (prediction value) that lead to this tracking.
+        # If not active the element is NaN
+        tracking_confidence_list[active_edge_id] = tracking_confidence 
+        # Describes the source node that is 
+        # actively connected by this active edge . If not active the element is NaN
+        active_neighbors[active_edge_id] = active_neighbor_node_index
 
+    def deactivate_edges(lossing_idx_global :torch.Tensor, 
+                active_connections:torch.Tensor, 
+                tracking_confidence_list:torch.Tensor,
+                active_neighbors:torch.Tensor ):
+
+        active_connections[lossing_idx_global] = float('nan') 
+        tracking_confidence_list[lossing_idx_global] = float('nan')
+        active_neighbors[lossing_idx_global] = float('nan')
+
+
+    def selfcompare_vector(vector_list_scalars:torch.Tensor):
+        assert vector_list_scalars.size() == torch.Size([len(vector_list_scalars)]), "tensor is not one dimensional"
+        comparison_matrix = vector_list_scalars.eq(vector_list_scalars.unsqueeze(dim=1))
+        return comparison_matrix.fill_diagonal_(False)
+
+    def assing_single_active_edge_per_target_node():
+        """
+        Returns:
+        active_connections:
+        Describes if an edge is active or inactive.If not active the element is NaN
+        
+        tracking_confidence_list:
+        safes the confidence (prediction value) that lead to this tracking.
+        If not active the element is NaN
+        
+        active_neighbors:
+        Describes the source node that is 
+        actively connected by this active edge . If not active the element is NaN
+        """
+        edge_indices = mot_graph.graph_obj.edge_index
+        edge_preds = mot_graph.graph_obj.edge_preds 
+
+        active_connections = torch.zeros_like(edge_preds) * float('nan')
+        tracking_confidence_list = torch.zeros_like(edge_preds) *float('nan')
+        active_neighbors = torch.zeros_like(edge_preds) *float('nan')
+
+        timeframes = range(1,mot_graph.max_frame_dist) # start at 1 to skip first frame
+
+        # Iterate in reverse to start from the last frame
+        for i in reversed(timeframes): 
+            # filter nodes from frame i
+            nodes_from_frame_i_mask = mot_graph.graph_dataframe["timeframes_all"] == i
+            # nodes_from_frame_i_mask = ~nodes_from_frame_i_mask
+            node_idx_from_frame_i = torch.nonzero(nodes_from_frame_i_mask, as_tuple=True)[0]
+            # filter their incoming edges
+            for node_id in node_idx_from_frame_i:
+                #########################################
+                incoming_edge_idx = []
+                rows, columns = edge_indices[0],edge_indices[1] # COO-format
+                edge_mask:torch.Tensor = torch.eq(columns, node_id)
+                incoming_edge_idx = edge_mask.nonzero().squeeze()
+                incoming_edge_idx= filter_out_spatial_edges(incoming_edge_idx, mot_graph.graph_obj)
+                if incoming_edge_idx.shape[0] == 0:
+                    # Found a node without temporal edges
+                    # cannot assign any active connections to it 
+                    # it will be considered as a node without any active connections and therefore will be assigned a new trackId
+                    # continue with next node
+                    continue
+                incoming_edge_idx = filter_for_past_edges(incoming_edge_idx, i, mot_graph.max_frame_dist, mot_graph.graph_obj)
+                if incoming_edge_idx.shape[0] == 0:
+                    # Found a node without temporal edges from the past
+                    # cannot assign any active connections to it 
+                    # it will be considered as a node without any active connections and therefore will be assigned a new trackId
+                    # continue with next node
+                    continue
+                #######################################
+                # Threshold the incoming predictions. 
+                # Otherwise predictions without probability above a certain threshold will be selected
+                incoming_edge_predictions = edge_preds[incoming_edge_idx]
+                valid_edges_mask:torch.Tensor = (incoming_edge_predictions > tracking_threshold)
+                if valid_edges_mask.any()==False:
+                    # Given all incoming edges have a prediction probability (tracking certainty) lower than the given threshold
+                    # Therefore, this node can not be connected to any of previous nodes
+                    # No unique active edge can be assigned
+                    # continue with next node
+                    continue
+                valid_incoming_edge_predictions = torch.zeros_like(incoming_edge_predictions)
+                valid_incoming_edge_predictions[valid_edges_mask] = incoming_edge_predictions[valid_edges_mask]
+                ########################################
+                # Get edge predictions and provide the active neighbor and its tracking confindence
+                
+                probabilities = functional.softmax(valid_incoming_edge_predictions, dim=0 )
+                # Get the edge_index with the highest log_likelihood
+                log_probabilities = functional.log_softmax(valid_incoming_edge_predictions, dim=0)
+                local_index = torch.argmax(log_probabilities, dim = 0)
+                assert local_index == torch.argmax(functional.softmax(valid_incoming_edge_predictions, dim=0 ), dim = 0)
+                
+                # look for the global edge index
+                global_index = incoming_edge_idx[local_index]
+                active_edge_id = global_index
+
+                # assert len(active_edge_id) == 1,"more than one active connection is ambigous!"
+                # tracking_confidence is equal to the highest edge_prediction of the valid incoming edges
+                tracking_confidence = valid_incoming_edge_predictions[local_index] # tracking confidence for evaluation AMOTA-metric
+                
+                # set active edges
+                active_edge = edge_indices[:,active_edge_id]
+                assert rows[active_edge_id] == active_edge[0]
+
+                # # Describes if an edge is active or inactive. 
+                # # If not active the element is NaN
+                # active_connections[active_edge_id] = 1 
+                # # safe the confidence (prediction value) that lead to this tracking.
+                # # If not active the element is NaN
+                # tracking_confidence_list[active_edge_id] = tracking_confidence 
+                # # Describes the source node that is 
+                # # actively connected by this active edge . If not active the element is NaN
+                # active_neighbors[active_edge_id] = rows[active_edge_id] 
+                source_node_index = rows[active_edge_id] 
+                activate_edge_state(active_edge_id, 
+                        tracking_confidence=tracking_confidence, 
+                        active_neighbor_node_index= source_node_index,
+                        active_connections= active_connections,
+                        tracking_confidence_list = tracking_confidence_list,
+                        active_neighbors=active_neighbors,)
+
+        return active_connections, tracking_confidence_list, active_neighbors
+        
+    def decide_active_edge_between_ambiguous_edges(
+                all_global_ambigous_edge_idx:torch.Tensor, 
+                active_connections:torch.Tensor, 
+                tracking_confidence_list:torch.Tensor,
+                active_neighbors:torch.Tensor ):
+        """
+        Computes a winner active edge and sets all remaining ambiguous edges as inactive
+        Takes a subset of active edges that are connected to the same source node but 
+        """
+        # # Get global node id
+        # current_global_edge_id = isnotNan_mask_idx[local_row_index]
+        # current_global_source_node_id = active_neighbors[current_global_edge_id] 
+        # assert (current_global_source_node_id == active_neighbors[isnotNan_mask_idx[ambigous_node_idx]]).all
+        # local_active_neighbor = local_active_neighbor_list[local_row_index]
+        # assert current_global_source_node_id == local_active_neighbor
+        # # Get all active edges
+        # global_ambigous_edge_idx = isnotNan_mask_idx[ambigous_node_idx]
+        # # Combine current and other ambigous edge_idx
+        # all_global_ambigous_edge_idx = torch.cat([current_global_edge_id.unsqueeze(dim=1),global_ambigous_edge_idx], dim=0)
+        all_global_ambigous_edge_idx = all_global_ambigous_edge_idx.squeeze_()
+        ambigous_active_edges = active_connections[all_global_ambigous_edge_idx]
+        ambigous_tracking_confidence = tracking_confidence_list[all_global_ambigous_edge_idx]
     
+        # Perform softmax + argmax
+        log_probs = functional.log_softmax(ambigous_tracking_confidence, dim = 0)
+        winning_subsample_id = torch.argmax(log_probs, dim = 0)
+        winning_id_global = all_global_ambigous_edge_idx[winning_subsample_id]
+        
+        # Set remaining active edge-candidates to inactive -> False
+        lossing_idx_global = all_global_ambigous_edge_idx[all_global_ambigous_edge_idx != winning_id_global]
+        # active_connections[lossing_idx_global] = float('nan') 
+        # tracking_confidence_list[lossing_idx_global] = float('nan')
+        deactivate_edges(lossing_idx_global, active_connections, tracking_confidence_list, active_neighbors)
 
+    ##########################################################################
+    # Main thread start here
     edge_indices = mot_graph.graph_obj.edge_index
     edge_preds = mot_graph.graph_obj.edge_preds 
-    mot_graph.graph_obj.x
+    ##########################################################################
+    # Assign for every node an active edge except the first frames nodes
+    # Start from the latest nodes and propagate reverse in time 
+    active_connections, tracking_confidence_list, active_neighbors = \
+            assing_single_active_edge_per_target_node()
+    ##########################################################################    
+    # Determine if any active source_node has more than 1 active edges assigned
+    # to them from nodes from the same timeframe
+    # Check for duplicates in active_neighbors
 
-    active_connections = torch.zeros_like(edge_preds) * float('nan')
-    tracking_confidence_list = torch.zeros_like(edge_preds) *float('nan')
-    active_neighbors = torch.zeros_like(edge_preds) *float('nan')
-
-    timeframes = range(1,mot_graph.max_frame_dist) # start at 1 to skip first frame
-    # Iterate in reverse to start from the last frame
-    for i in reversed(timeframes): 
-        # filter nodes from frame i
-        nodes_from_frame_i_mask = mot_graph.graph_dataframe["timeframes_all"] == i
-        # nodes_from_frame_i_mask = ~nodes_from_frame_i_mask
-        node_idx_from_frame_i = torch.nonzero(nodes_from_frame_i_mask, as_tuple=True)[0]
-        # filter their incoming edges
-        for node_id in node_idx_from_frame_i:
-            #########################################
-            incoming_edge_idx = []
-            rows, columns = edge_indices[0],edge_indices[1] # COO-format
-            edge_mask:torch.Tensor = torch.eq(columns, node_id)
-            incoming_edge_idx = edge_mask.nonzero().squeeze()
-            incoming_edge_idx= filter_out_spatial_edges(incoming_edge_idx, mot_graph.graph_obj)
-            if incoming_edge_idx.shape[0] == 0:
-                # Found a node without temporal edges
-                # cannot assign any active connections to it 
-                # it will be considered as a node without any active connections and therefore will be assigned a new trackId
-                # continue with next node
-                continue
-            incoming_edge_idx = filter_for_past_edges(incoming_edge_idx, i, mot_graph.max_frame_dist, mot_graph.graph_obj)
-            if incoming_edge_idx.shape[0] == 0:
-                # Found a node without temporal edges from the past
-                # cannot assign any active connections to it 
-                # it will be considered as a node without any active connections and therefore will be assigned a new trackId
-                # continue with next node
-                continue
-            #######################################
-            # Threshold the incoming predictions. 
-            # Otherwise predictions without probability above a certain threshold will be selected
-            incoming_edge_predictions = edge_preds[incoming_edge_idx]
-            valid_edges_mask:torch.Tensor = (incoming_edge_predictions > tracking_threshold)
-            if valid_edges_mask.any()==False:
-                # Given all incoming edges have a prediction probability (tracking certainty) lower than the given threshold
-                # Therefore, this node can not be connected to any of previous nodes
-                # No unique active edge can be assigned
-                # continue with next node
-                continue
-            valid_incoming_edge_predictions = torch.zeros_like(incoming_edge_predictions)
-            valid_incoming_edge_predictions[valid_edges_mask] = incoming_edge_predictions[valid_edges_mask]
-            ########################################
-            # Get edge predictions and provide the active neighbor and its tracking confindence
-            
-            probabilities = functional.softmax(valid_incoming_edge_predictions, dim=0 )
-            # Get the edge_index with the highest log_likelihood
-            log_probabilities = functional.log_softmax(valid_incoming_edge_predictions, dim=0)
-            local_index = torch.argmax(log_probabilities, dim = 0)
-            assert local_index == torch.argmax(functional.softmax(valid_incoming_edge_predictions, dim=0 ), dim = 0)
-            
-            # look for the global edge index
-            global_index = incoming_edge_idx[local_index]
-            active_edge_id = global_index
-
-            # assert len(active_edge_id) == 1,"more than one active connection is ambigous!"
-            # tracking_confidence is equal to the highest edge_prediction of the valid incoming edges
-            tracking_confidence = valid_incoming_edge_predictions[local_index] # tracking confidence for evaluation AMOTA-metric
-            
-            # set active edges
-            active_edge = edge_indices[:,active_edge_id]
-            assert rows[active_edge_id] == active_edge[0]
-            active_connections[active_edge_id] = 1
-            tracking_confidence_list[active_edge_id] = tracking_confidence
-            active_neighbors[active_edge_id] = rows[active_edge_id]
-
-    # Determine if any active source_node has more than 1 active edges assigned to them
-    # check for duplicates in active_neighbors
     isNan_mask = active_neighbors !=active_neighbors
     isnotNan_mask = ~isNan_mask
     local_active_neighbor_list = active_neighbors[isnotNan_mask]
-    comparison_matrix = local_active_neighbor_list.eq(local_active_neighbor_list.unsqueeze(dim=1))
-    comparison_matrix.fill_diagonal_(False)
+
+    comparison_matrix = selfcompare_vector(local_active_neighbor_list)
+    # comparison_matrix = local_active_neighbor_list.eq(local_active_neighbor_list.unsqueeze(dim=1))
+    # comparison_matrix.fill_diagonal_(False)
+    # assert (comparison_matrix == selfcompare_vector(local_active_neighbor_list)).all()
+
     num_ambigous_neighbors_per_source_node = comparison_matrix.sum(dim=0)
-    is_ambigous_neighbors = num_ambigous_neighbors_per_source_node > 0
+    # Tell us if there are any nodes connected to the same source node
+    # However, only indicates potential candidates for ambigous active edges 
+    # because they are valid if the connected target nodes are in different timeframes
+    is_ambigous_neighbor_candidates = num_ambigous_neighbors_per_source_node > 0
 
-    # if(False):
-    if(is_ambigous_neighbors.any()):
-        comparison_matrix = comparison_matrix.triu()
-        ambigous_source_node_local_idx = comparison_matrix.nonzero()
-        isnotNan_mask_idx = isnotNan_mask.nonzero()
-        ambigous_source_node_global_idx = isnotNan_mask_idx[ambigous_source_node_local_idx]
+    if(is_ambigous_neighbor_candidates.any()):
+        comparison_matrix = comparison_matrix.triu() # only consider each connection once
+        # Important!: These are indices belonging to the comparison matrix
+        # The indices are derived from the local_indices from the "local_active_neighbor_list"- variable
+        ambigous_source_node_local_idx = comparison_matrix.nonzero() # List with all the ambigous_edge_candidate's indices from the comparison matrix
+        isnotNan_mask_idx = isnotNan_mask.nonzero() # Mask to map local indices to global indices
+
         # get corresponding source node and its active_edge_idx
-
-        # filter duplicates(active edge candidates)
+        # Iterate row by row through comparison_matrix : 
+        # comparison_matrix.shape[0] = len(local_active_neighbor_list)
+        # filter duplicates(active edge candidates) 
         for local_row_index in range(len(local_active_neighbor_list)):
             row_idx = ambigous_source_node_local_idx[:,0]
             column_idx = ambigous_source_node_local_idx[:,1]
             # Check if the current active_node has ambigous connections
             if local_row_index in row_idx:
-                # Get index of ambigous 
+                # Get index of ambigous edge candidates
                 local_mask = row_idx == local_row_index
-                ambigous_node_idx = column_idx[local_mask]
-                # Get global node id
-                current_global_edge_id = isnotNan_mask_idx[local_row_index]
-                current_global_source_node_id = active_neighbors[current_global_edge_id] 
-                assert (current_global_source_node_id == active_neighbors[isnotNan_mask_idx[ambigous_node_idx]]).all
-                local_active_neighbor = local_active_neighbor_list[local_row_index]
-                assert current_global_source_node_id == local_active_neighbor
-                # Get all active edges
-                global_ambigous_edge_idx = isnotNan_mask_idx[ambigous_node_idx]
-                # Combine current and other ambigous edge_idx
-                all_global_ambigous_edge_idx = torch.cat([current_global_edge_id.unsqueeze(dim=1),global_ambigous_edge_idx], dim=0)
-                all_global_ambigous_edge_idx = all_global_ambigous_edge_idx.squeeze_()
-                ambigous_active_edges = active_connections[all_global_ambigous_edge_idx]
-                ambigous_tracking_confidence = tracking_confidence_list[all_global_ambigous_edge_idx]
-            
-                # Perform softmax + argmax
-                log_probs = functional.log_softmax(ambigous_tracking_confidence, dim = 0)
-                winning_subsample_id = torch.argmax(log_probs, dim = 0)
-                winning_id_global = all_global_ambigous_edge_idx[winning_subsample_id]
+                ambigous_candidates_node_idx = column_idx[local_mask]
+                ##########################################################################
+                # Check if they are from the same time frame
+                current_global_edge_id = isnotNan_mask_idx[local_row_index] # current edge index from edges_indices-list
+                global_ambigous_candidates_edge_idx = \
+                    isnotNan_mask_idx[ambigous_candidates_node_idx] # contains the global indices to access the edges thata also have the same active neigbor_node
                 
-                # Set remaining active edge-candidates to inactive -> False
-                lossing_idx_global = all_global_ambigous_edge_idx[all_global_ambigous_edge_idx != winning_id_global]
-                active_connections[lossing_idx_global] = float('nan') 
-                tracking_confidence_list[lossing_idx_global] = float('nan')
+                # Include the current active edges to the candidate list
+                all_global_ambigous_edge_candidates_idx = torch.cat([current_global_edge_id.unsqueeze(dim=1),global_ambigous_candidates_edge_idx], dim=0)
+                all_global_ambigous_edge_candidates_idx = all_global_ambigous_edge_candidates_idx.squeeze()
+                # Get the edges from candidates
+                ambigous_candidate_edges = \
+                    edge_indices[:,all_global_ambigous_edge_candidates_idx] # contains the ambigous candidates edges with source[0] and target[1] node index
+                ambigous_candidate_edges = ambigous_candidate_edges.squeeze() 
+                if ambigous_candidate_edges.shape[0] != edge_indices.shape[0] \
+                    and ambigous_candidate_edges.shape[1] != len(all_global_ambigous_edge_candidates_idx):
+                    ambigous_candidate_edges = ambigous_candidate_edges.T
 
+                # must retain basic shape [2,num_edges]
+                assert ambigous_candidate_edges.shape[0] == edge_indices.shape[0] \
+                        and ambigous_candidate_edges.shape[1] == len(all_global_ambigous_edge_candidates_idx),\
+                            "The ambigous candidate edge Tensor does not come in the common edge.inidizes shape [2,num_edges]"
+                # Get corresponding Target nodes
+                ambiguous_candidates_target_node_indices = ambigous_candidate_edges[1]
+                # Get corresponding timeframes
+                timeframe_per_node:torch.Tensor  = mot_graph.graph_obj.timeframe_number
+                ambiguous_candidates_target_node_timeframe = timeframe_per_node[ambiguous_candidates_target_node_indices]
+                current_active_edge_timeframe = ambiguous_candidates_target_node_timeframe[0]
+
+                # Comparison matrix between timeframes 
+                # timeframe_comparison_matrix :torch.Tensor = \
+                #     ambiguous_candidates_target_node_timeframe.eq(\
+                #             ambiguous_candidates_target_node_timeframe(dim=1))
+                # timeframe_comparison_matrix.fill_diagonal_(False)
+                timeframe_comparison_matrix :torch.Tensor = selfcompare_vector(ambiguous_candidates_target_node_timeframe.squeeze())
+
+                # Check if the candidates in the same timeframe
+                # If True, continue as usual
+                if (ambiguous_candidates_target_node_timeframe == current_active_edge_timeframe ).all():
+                    ambigous_node_idx = all_global_ambigous_edge_candidates_idx
+                    decide_active_edge_between_ambiguous_edges(ambigous_node_idx, 
+                            active_connections, 
+                            tracking_confidence_list, 
+                            active_neighbors)
+                
+                # If a subset of nodes is within the same timeframe
+                # Then divide ambigous_candidates into timeframe-bins
+                elif((timeframe_comparison_matrix.sum(dim=0) > 0).any()):
+                    # Filter only between nodes from the same timeframe
+                    considered_timeframes = torch.unique(ambiguous_candidates_target_node_timeframe)
+                    for timeframe_i in considered_timeframes:
+                        time_mask :torch.BoolTensor= timeframe_i == ambiguous_candidates_target_node_timeframe.squeeze()
+                        ambigous_node_idx_time_i =  all_global_ambigous_edge_candidates_idx[time_mask]
+                        # Do nothing if there is only one edge candidate for a certain timeframe
+                        # Otherwise filter ambigous edges for timeframe_i
+                        if time_mask.sum() > 1:
+                            assert len(ambigous_node_idx_time_i) > 1 
+                            decide_active_edge_between_ambiguous_edges(ambigous_node_idx_time_i,
+                                active_connections, 
+                                tracking_confidence_list, 
+                                active_neighbors)
+                # if all timeframes are different to eachother then skip this process
+                # and continue with the next row
+                else:
+                    continue
+                ##################################################################################
+                # # 
+                # # Get global node id
+                # current_global_edge_id = isnotNan_mask_idx[local_row_index]
+                # current_global_source_node_id = active_neighbors[current_global_edge_id] 
+                # assert (current_global_source_node_id == active_neighbors[isnotNan_mask_idx[ambigous_node_idx]]).all
+                # local_active_neighbor = local_active_neighbor_list[local_row_index]
+                # assert current_global_source_node_id == local_active_neighbor
+                # # Get all active edges
+                # global_ambigous_edge_idx = isnotNan_mask_idx[ambigous_node_idx]
+                # # Combine current and other ambigous edge_idx
+                # all_global_ambigous_edge_idx = torch.cat([current_global_edge_id.unsqueeze(dim=1),global_ambigous_edge_idx], dim=0)
+                # all_global_ambigous_edge_idx = all_global_ambigous_edge_idx.squeeze_()
+                # ambigous_active_edges = active_connections[all_global_ambigous_edge_idx]
+                # ambigous_tracking_confidence = tracking_confidence_list[all_global_ambigous_edge_idx]
+            
+                # # Perform softmax + argmax
+                # log_probs = functional.log_softmax(ambigous_tracking_confidence, dim = 0)
+                # winning_subsample_id = torch.argmax(log_probs, dim = 0)
+                # winning_id_global = all_global_ambigous_edge_idx[winning_subsample_id]
+                
+                # # Set remaining active edge-candidates to inactive -> False
+                # lossing_idx_global = all_global_ambigous_edge_idx[all_global_ambigous_edge_idx != winning_id_global]
+                # active_connections[lossing_idx_global] = float('nan') 
+                # tracking_confidence_list[lossing_idx_global] = float('nan')
+    #########################################################################################
+    # Assign the final output to the graph object
     mot_graph.graph_obj.active_edges = active_connections >=1 # Make into torch.ByteTensor
     mot_graph.graph_obj.tracking_confidence = tracking_confidence_list # torch.LongTensor
     mot_graph.graph_obj.active_neighbors = active_neighbors # torch.IntTensor

@@ -46,7 +46,8 @@ def get_run_str(run_id, cross_val_split, add_date):
         run_str = run_id + f"_split_{cross_val_split}"
 
     if add_date:
-        date = '{date:%m-%d_%H:%M}'.format(date=datetime.now())
+        # date = '{date:%m-%d_%H:%M}'.format(date=datetime.now())
+        date = '{date:%m-%d__%H-%M}'.format(date=datetime.now())
         run_str = date + '_' + run_str
 
     return run_str

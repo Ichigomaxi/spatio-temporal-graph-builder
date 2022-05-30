@@ -28,7 +28,7 @@ from utils.evaluation import (assign_definitive_connections, assign_track_ids,
 from utils.misc import save_pickle
 from utils.path_cfg import OUTPUT_PATH
 from visualization.visualize_graph import (visualize_eval_graph,
-                                           visualize_geometry_list)
+                                           visualize_geometry_list,visualize_output_graph)
 
 
 class MOTNeuralSolver(pl.LightningModule):
@@ -297,6 +297,8 @@ class MOTNeuralSolver(pl.LightningModule):
             
             if(self.hparams['eval_params']['visualize_graph']):
                 geometry_list = visualize_eval_graph(mot_graph)
+                visualize_geometry_list(geometry_list)
+                geometry_list = visualize_output_graph(mot_graph)
                 visualize_geometry_list(geometry_list)
             
             inferred_mot_graphs.append(mot_graph)
