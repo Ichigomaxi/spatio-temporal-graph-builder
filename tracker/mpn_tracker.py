@@ -78,7 +78,7 @@ class NuscenesMPNTracker(MPNTracker):
 
         return edge_preds
 
-    def _perform_tracking_for_mot_graph(self,mot_graph:NuscenesMotGraph,):
+    def _perform_tracking_for_mot_graph(self,mot_graph:NuscenesMotGraph):
 
         dataset:NuscenesMOTGraphDataset = self.dataset
         # Compute active connections
@@ -90,6 +90,8 @@ class NuscenesMPNTracker(MPNTracker):
                     nuscenes_handle = dataset.nuscenes_handle)
         mot_graph.graph_obj.tracking_IDs = tracking_IDs
         mot_graph.graph_obj.tracking_confidence_by_node_id = tracking_confidence_by_node_id
+        if self.use_gt:
+            mot_graph.graph_obj.tracking_confidence_by_node_id = torch.ones_like(tracking_confidence_by_node_id)
 
         return tracking_ID_dict
 
