@@ -63,13 +63,14 @@ dataset_params:
   # Contains a list of nuscenes class labels.
   # Only detections from these clases will be loaded for the graph
   # filterBoxes_categoryQuery: ['vehicle.car'] 
-  filterBoxes_categoryQuery: ['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian'] #['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian', 'vehicle.trailer', 'vehicle.truck']
+  filterBoxes_categoryQuery: ['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian', 'vehicle.trailer', 'vehicle.truck'] #['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian', 'vehicle.trailer', 'vehicle.truck']
 
   # Graph Construction Parameters
   graph_construction_params:
-    spatial_knn_num_neighbors: 3
-    temporal_knn_num_neighbors : 3
+    spatial_knn_num_neighbors: 4
+    temporal_knn_num_neighbors : 4
     spatial_shift_timeframes : 20
+    max_temporal_edge_length : 2
     
   max_frame_dist: 3 # Maximum number of frames contained in each graph sampled graph
   # Node Features
@@ -95,73 +96,5 @@ eval_params:
   # Logging / Metrics reporting params
   tensorboard: True
   save_submission: True
-  use_gt: True
+  use_gt: False
   tracking_threshold: 0.5
-  # check_val_every_n_epoch: 9999
-  # val_percent_check: 0.15 # Percentage of the entire dataset used each time that validation loss is computed
-  # mot_metrics_to_log: ['mota', 'norm_mota', 'idf1', 'norm_idf1', 'num_switches', 'num_misses', 'num_false_positives', 'num_fragmentations', 'constr_sr']
-  # metrics_to_log: ['loss', 'precision', 'recall', 'constr_sr']
-  # log_per_seq_metrics: False
-  # normalize_mot_metrics: True # Determines whether MOT results are computer via an oracle (i.e. GT labels), in order to
-  #                             # normalize results. (i.e. what is the best possible MOTA we could get with a set of dets?)
-  # mot_metrics_to_norm: ['mota', 'idf1']
-  # best_method_criteria: 'idf1'
-
-  # # Inference Params
-  # max_dets_per_graph_seq: 40000 # Entire sequences are split into smaller subsequences of up to max_dets_per_graph_seq
-  #                               # detections to avoid loading into (GPU) memory massive graphs.
-  # rounding_method: exact # Determines whether an LP is used for rounding ('exact') or a greedy heuristic ('greedy')
-  # solver_backend: pulp # Determines package used to solve the LP, (Gurobi requires a license, pulp does not)
-  # set_pruned_edges_to_inactive: False # Determines whether pruning an edge during inference has the same effect
-  #                                     # as predicting it as being non-active, or as not predicting a value for it
-  #                                     # (i.e. the averaging is only computed among the times the edge is not pruned)
-
-  # # Postprocessing parameters:
-  # use_tracktor_start_ends: True
-  # add_tracktor_detects: True
-  # min_track_len: 2
-
-# graph_model_params:
-#   node_agg_fn: 'sum'
-#   num_enc_steps: 5  # Number of message passing steps
-#   num_class_steps: 3  # Number of message passing steps during feature vectors are classified (after Message Passing)
-#   reattach_initial_nodes: False  # Determines whether initially encoded node feats are used during node updates
-#   reattach_initial_edges: True  # Determines whether initially encoded edge feats are used during node updates
-
-#   encoder_feats_dict:
-#       edge_in_dim: 2
-#       edge_fc_dims: [18, 18]
-#       edge_out_dim: 2
-#       node_in_dim: 4
-#       #node_fc_dims: [512, 128]
-#       node_fc_dims: [128]
-#       node_out_dim: 4
-#       dropout_p: 0
-#       use_batchnorm: False
-  
-#   edge_model_feats_dict:
-#     # Input size is 1(=node_factor) * 2 * #encoded nodes ('node_out_dim') 
-#     # + 2(=edge_factor) * #encoded edges (edge_out_dim)
-#     # Make sure last layer's output dimensions 
-#     # equal the encoded edge feature size
-#     fc_dims: [80, 2] 
-#     dropout_p: 0
-#     use_batchnorm: False
-
-#   node_model_feats_dict:
-#     # In size is 1(=node_factor) * encoded nodes('node_out_dim') 
-#     # + 1 * encoded edges (edge_out_dim)
-#     # Make sure last layer's output dimensions 
-#     # equal the encoded node feature size
-#     fc_dims: [56, 4]
-#     dropout_p: 0
-#     use_batchnorm: False
-
-#   # only classifies edges 
-#   classifier_feats_dict:
-#     # edge input must be same output/last layer of edge model, edge_model_feats_dict[fc_dims][-1]
-#     edge_in_dim: 2
-#     edge_fc_dims: [8]
-#     edge_out_dim: 1 # only 1 output for binary classification
-#     dropout_p: 0
-#     use_batchnorm: False

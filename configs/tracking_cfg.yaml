@@ -58,7 +58,7 @@ dataset_params:
 
   # Dataset Processing params:
   dataset_version: 'v1.0-trainval'
-  dataroot : '/mount/HDD2/Datasets/nuscenes2'
+  dataroot : '/media/HDD2/Datasets/nuscenes2'
   is_windows_path : False
 
   # Filter Parameter

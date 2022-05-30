@@ -25,19 +25,28 @@ dataset_params:
   # Only detections from these clases will be loaded for the graph
   filterBoxes_categoryQuery: ['vehicle.car'] 
 
+  # Graph Construction Parameters
+  graph_construction_params:
+    spatial_knn_num_neighbors: 4
+    temporal_knn_num_neighbors : 4
+    spatial_shift_timeframes : 20
+    max_temporal_edge_length : 2
+    
+  max_frame_dist: 3 # Maximum number of frames contained in each graph sampled graph
+  # Node Features
+  node_feature_mode : "centers_and_time" # determines the included node features 
+  # Edge Features
+  edge_feature_mode : "edge_type" # determines the included edge features 
+  # Edge_Label Type
+  label_type: "binary" # "binary" or "multiclass"
+  # Choose how Graph construction should be handled
+  adapt_knn_param: True # if number of objects is below the KNN-Param then K
+
   # Data Augmentation Params
   augment: False # Determines whether data augmentation is performed
 
-  # Graph Construction Parameters
-  max_frame_dist: 3 # Maximum number of frames contained in each graph sampled graph
-  node_feature_mode : "centers_and_time" # determines the included node features 
-  edge_feature_mode : "edge_type" # determines the included edge features 
-
-  # Choose how Graph construction should be handled
-  adapt_knn_param: False # if number of objects is below the KNN-Param then K
-
 data_splits: # See nuscenes.datasplit()
-  train: ['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']
-  val: ['scene-0103', 'scene-0916']
-  test: []
+  # train: ['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']
+  # val: ['scene-0103', 'scene-0916']
+  # test: []
 
