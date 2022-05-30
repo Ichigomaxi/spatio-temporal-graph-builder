@@ -286,7 +286,9 @@ class MOTNeuralSolver(pl.LightningModule):
                         nuscenes_handle = dataset.nuscenes_handle)
             mot_graph.graph_obj.tracking_IDs = tracking_IDs
             mot_graph.graph_obj.tracking_confidence_by_node_id = tracking_confidence_by_node_id
-
+            if use_gt:  # For debugging purposes and obtaining oracle results
+                mot_graph.graph_obj.tracking_confidence_by_node_id = torch.ones_like(tracking_confidence_by_node_id)
+            
             # # Prepare submission dict
             summary = {}
             summary = prepare_for_submission(summary)
