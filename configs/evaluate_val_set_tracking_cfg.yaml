@@ -48,7 +48,7 @@ dataset_params:
     spatial_shift_timeframes : 20
     max_temporal_edge_length : 2
     
-  max_frame_dist: 3 # Maximum number of frames contained in each graph sampled graph
+  max_frame_dist: 6 # Maximum number of frames contained in each graph sampled graph
   # Node Features
   node_feature_mode : "centers_and_time" # determines the included node features 
   # Edge Features
@@ -73,6 +73,6 @@ eval_params:
   # Logging / Metrics reporting params
   tensorboard: True
   save_submission: True
-  use_gt: True
+  use_gt: False
   tracking_threshold: 0.5
   
