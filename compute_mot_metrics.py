@@ -1,6 +1,7 @@
 from nuscenes.eval.tracking.evaluate import TrackingEval
 from nuscenes.eval.tracking.data_classes import TrackingMetrics, TrackingMetricDataList, TrackingConfig, TrackingBox, TRACKING_NAMES
 import json
+import os.path as osp
 
 # config_path = "configs/nuscenes_eval/mot_car_evaluation.json"
 config_path = 'configs/nuscenes_eval/tracking_nips_2019.json'
@@ -10,15 +11,22 @@ with open(config_path, 'r') as _f:
             cfg_ = TrackingConfig.deserialize(json.load(_f))
 # TRACKING_NAMES = cfg_.tracking_names
 
-result_path_ = "/media/HDD2/students/maximilian/spatio-temporal-gnn/experiments/05-24_12:37_evaluation/mot_metrics/mini_val_tracking.json"
+result_path_ = "/media/HDD2/students/maximilian/spatio-temporal-gnn/experiments/"
+experiment = "06-02__15-28_evaluation"
+local_tracking_filepath = "val_tracking.json"
 
-eval_set_ = "mini_val"
+result_path_ = osp.join(result_path_,experiment, local_tracking_filepath)
 
-output_dir_=  '/media/HDD2/students/maximilian/spatio-temporal-gnn/mot_metric/'+ eval_set_
+eval_set_ = "val"
 
-version_ = 'v1.0-mini'
+output_dir_=  '/media/HDD2/students/maximilian/spatio-temporal-gnn/mot_metric_afterprocessing/'
+output_dir_ = osp.join(output_dir_,experiment, eval_set_)
 
-dataroot_ = '/media/HDD2/Datasets/mini_nusc'
+
+# version_ = 'v1.0-mini'
+version_ = 'v1.0-trainval'
+# dataroot_ = '/media/HDD2/Datasets/mini_nusc'
+dataroot_ = '/media/HDD2/Datasets/nuscenes2'
 
 verbose_ = True
 

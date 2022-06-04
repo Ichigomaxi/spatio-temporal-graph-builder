@@ -9,7 +9,7 @@ if __name__ == "__main__":
     
     # change this
     dirpath ="/media/HDD2/students/maximilian/spatio-temporal-gnn/experiments"
-    file_subdir = "05-30__18-40_evaluation/eval_results"        
+    file_subdir = "05-31__14-00_evaluation/eval_results"        
 
     metrics_summary_path = 'metrics_summary.json'
     metric_details_path = "metrics_details.json"

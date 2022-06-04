@@ -14,13 +14,13 @@ ckpt_path: 'experiments/05-05_18:30_train_w_LR_scheduler/model_checkpoints/epoch
 # Config for modes from the nuscenes split
 # train_dataset_mode: "train"
 # eval_dataset_mode: "val"
-test_dataset_mode: "val"
+test_dataset_mode: "train"
 
 gpu_settings:
   device_type: "gpu"
   # Specify which GPUs to use
-  device_id: [0] # Specifically takes the gpu associated with cuda:1 
-  torch_device: 'cuda:0'
+  device_id: [1] # Specifically takes the gpu associated with cuda:1 
+  torch_device: 'cuda:1'
 
 dataset_params:
   # Preprocessing ParamsL
@@ -48,7 +48,7 @@ dataset_params:
     spatial_shift_timeframes : 20
     max_temporal_edge_length : 2
     
-  max_frame_dist: 18 # Maximum number of frames contained in each graph sampled graph
+  max_frame_dist: 6 # Maximum number of frames contained in each graph sampled graph
   # Node Features
   node_feature_mode : "centers_and_time" # determines the included node features 
   # Edge Features
