@@ -23,6 +23,9 @@ from utils.evaluation import (add_tracked_boxes_to_submission,
                               assign_definitive_connections, assign_track_ids)
 from utils.nuscenes_helper_functions import (get_all_samples_from_scene,
                                              skip_sample_token)
+from visualization.visualize_graph import (visualize_eval_graph,
+                                           visualize_geometry_list,
+                                           visualize_output_graph)
 
 
 class MPNTracker:
@@ -396,7 +399,13 @@ class NuscenesMPNTracker(MPNTracker):
             # print Information
             print("Max Mem allocated:", torch.cuda.max_memory_allocated(torch.device(self.dataset.device))/1e9)
             print(f"Done with Sequence chunk, it took {time()-t}")
-        
+            if  "visualize_graph" in self.eval_params \
+                and self.eval_params["visualize_graph"] \
+                and previous_mot_graph is not None:
+                geometry_list = visualize_eval_graph(previous_mot_graph)
+                visualize_geometry_list(geometry_list)
+                geometry_list = visualize_output_graph(previous_mot_graph)
+                visualize_geometry_list(geometry_list)
         ##########################################
         # Complement Submission with missing sample_tokens 
         # add empty lists to submission
