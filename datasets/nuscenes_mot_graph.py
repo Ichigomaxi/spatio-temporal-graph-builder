@@ -2,7 +2,7 @@
 from pickle import TRUE
 from tkinter.tix import Tree
 from turtle import shape
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Union
 
 import numpy as np
 import torch
@@ -24,7 +24,7 @@ from utility import filter_boxes, get_box_centers, is_same_instance
 from utils.nuscenes_helper_functions import (determine_class_id,
                                              get_sample_data_table,
                                              is_valid_box, is_valid_box_torch,
-                                             skip_sample_token)
+                                             skip_sample_token, transform_boxes_from_world_2_sensor)
 
 # For dummy objects
 from datasets.mot_graph import Graph
@@ -45,7 +45,9 @@ class NuscenesMotGraph(object):
                     construction_possibility_checked = True,
                     adapt_knn_param = False,
                     device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-                    dataset_params: dict = None):
+                    dataset_params: dict = None,
+                    detection_dict: Dict[str,Any] = None,
+                    inference_mode: bool = False):
         
         self.max_frame_dist = max_frame_dist
         self.nuscenes_handle = nuscenes_handle
@@ -54,6 +56,10 @@ class NuscenesMotGraph(object):
         self.filterBoxes_categoryQuery = filterBoxes_categoryQuery # Is often 'vehicle.car'
         self.adapt_knn_param = adapt_knn_param
         self.device = device
+        self.use_gt_detections:bool = True
+        self.det_file_path:str = None
+        self.detection_dict: Dict[str,Any] = None
+        self.inference_mode:bool = inference_mode
 
 
         self.SPATIAL_SHIFT_TIMEFRAMES, self.KNN_PARAM_TEMPORAL , self.KNN_PARAM_SPATIAL = None, None, None
@@ -66,12 +72,21 @@ class NuscenesMotGraph(object):
             if (("max_temporal_edge_length" in  dataset_params["graph_construction_params"]) \
                 and (dataset_params["graph_construction_params"]["max_temporal_edge_length"] is not None)):
                 self.MAX_TEMPORAL_EDGE_LENGTH:int = dataset_params["graph_construction_params"]["max_temporal_edge_length"]
-            
+
+            if "use_gt_detections" in dataset_params:
+                self.use_gt_detections:bool = dataset_params["use_gt_detections"]
+                if "det_file_path" in dataset_params:
+                    self.det_file_path:str = dataset_params["det_file_path"]
+                    self.detection_dict = detection_dict
+                    
         else:
             self.SPATIAL_SHIFT_TIMEFRAMES = 20
             self.KNN_PARAM_TEMPORAL = 3
             self.KNN_PARAM_SPATIAL = 3
             self.MAX_TEMPORAL_EDGE_LENGTH:int = 2
+            
+        assert (self.use_gt_detections == False and self.detection_dict is not None) \
+                or (self.use_gt_detections == True and self.detection_dict is None)
 
         # Data-child object for pytorch
         self.graph_obj:Graph = None
@@ -84,6 +99,8 @@ class NuscenesMotGraph(object):
         
         if self.is_possible2construct:
             self.graph_dataframe = self._construct_graph_dataframe()
+        
+
 
     def _construct_dummy_boxes(self, num_needed_boxes: int) -> List[Box]:
         boxes = []
@@ -113,7 +130,18 @@ class NuscenesMotGraph(object):
             or from given Detections (e.g. baseline detections)
         """
         if load_given_detections:
-            pass
+            if sample_token in self.detection_dict:
+                # Boxes are already filtered to only include detections from the nuscenes tracking challenge
+                boxes:List[Box] = self.detection_dict[sample_token]
+                ##################################################################
+                # Only need to filter out specific classes if wanted... but not necessary for challenge
+                # filter_detection_boxes()
+                ###################################################################
+                # Transforms detections boxes from world frame into sensor (LIDAR) frame
+                # Get transform
+                transform_boxes_from_world_2_sensor(boxes, self.nuscenes_handle, sensor_channel, sample_token)
+            else:
+                boxes = []
         else:
             # Append new boxes
             sample = self.nuscenes_handle.get('sample', sample_token)
@@ -121,24 +149,25 @@ class NuscenesMotGraph(object):
             lidar_top_data = get_sample_data_table(self.nuscenes_handle, sensor_channel, sample_token)
 
             _, boxes, _= self.nuscenes_handle.get_sample_data(lidar_top_data['token'], selected_anntokens=None, use_flat_vehicle_coordinates =False)
+        
             # filter out all object that are not of class self.filterBoxes_categoryQuery
             if( self.filterBoxes_categoryQuery is not None):
                 boxes = filter_boxes(self.nuscenes_handle, boxes= boxes, categoryQuery= self.filterBoxes_categoryQuery)
-            
-            # If the graph is allowed to change and adapt to scenes with less than k objects, 
-            # then timeframes with at least one detection can be used to build a graph
-            if(self.adapt_knn_param == True and len(boxes)==0):
-                boxes.extend(self._construct_dummy_boxes(1))
-            # Embed dummy objects if number of objects is smaller then any knn-Parameter
-            # this will also catch cases where no objects are left after filtering 
-            # there must be at least k + 1 elements such that one element can have k neighbors
-            if ((len(boxes) < (self.KNN_PARAM_SPATIAL + 1)) \
-                or (len(boxes) < (self.KNN_PARAM_TEMPORAL + 1)))\
-                and (self.adapt_knn_param == False):
-                spatial_difference = self.KNN_PARAM_SPATIAL + 1 - len(boxes)
-                temporal_difference = self.KNN_PARAM_TEMPORAL + 1 - len(boxes)
-                num_needed_boxes = max(spatial_difference, temporal_difference)
-                boxes.extend(self._construct_dummy_boxes(num_needed_boxes))
+        
+        # If the graph is allowed to change and adapt to scenes with less than k objects, 
+        # then timeframes with at least one detection can be used to build a graph
+        if(self.adapt_knn_param == True and len(boxes)==0):
+            boxes.extend(self._construct_dummy_boxes(1))
+        # Embed dummy objects if number of objects is smaller then any knn-Parameter
+        # this will also catch cases where no objects are left after filtering 
+        # there must be at least k + 1 elements such that one element can have k neighbors
+        if ((len(boxes) < (self.KNN_PARAM_SPATIAL + 1)) \
+            or (len(boxes) < (self.KNN_PARAM_TEMPORAL + 1)))\
+            and (self.adapt_knn_param == False):
+            spatial_difference = self.KNN_PARAM_SPATIAL + 1 - len(boxes)
+            temporal_difference = self.KNN_PARAM_TEMPORAL + 1 - len(boxes)
+            num_needed_boxes = max(spatial_difference, temporal_difference)
+            boxes.extend(self._construct_dummy_boxes(num_needed_boxes))
 
         return boxes
 
@@ -146,7 +175,12 @@ class NuscenesMotGraph(object):
         # Load Center points for features from LIDAR pointcloud frame of reference
         sensor_channel = 'LIDAR_TOP'
         sample_token = self.start_frame
-        load_given_detections = False
+
+        # Decide if load from given detection file
+        load_given_detections = True
+        if self.use_gt_detections: 
+            load_given_detections = False
+
         # Compute Dict of Lists of Box-objects mapped by integer value that references the timeframe
         # append dict to graph_dataframe
         boxes_dict= {}
@@ -179,6 +213,7 @@ class NuscenesMotGraph(object):
         """
         graph_dataframe = {}
         self._load_detections(graph_dataframe)
+        
         boxes_dict = graph_dataframe["boxes_dict"]
 
         # Compute Dict of Lists of Box-objects mapped by integer value that references the timeframe
@@ -227,12 +262,24 @@ class NuscenesMotGraph(object):
         
         # Add object class according to tracking own classes 
         class_ids =  torch.zeros((t_centers_list.shape[0],1), dtype=torch.int8).to(self.device)
-        for i,box in enumerate(graph_dataframe["boxes_list_all"]):
-            class_id = determine_class_id(box.name) 
+        list_of_boxes:List[Box] = graph_dataframe["boxes_list_all"]
+        for i,box in enumerate(list_of_boxes):
+            if self.use_gt_detections:
+                class_id = determine_class_id(box.name)
+            else:
+                class_id = box.label
             class_ids [i] = class_id
         graph_dataframe["class_ids"] = class_ids
         assert (graph_dataframe["class_ids"]!=0).all(), "some nodes were not assigned a suitable class id"
         
+        # Detection scores 
+        list_of_boxes:List[Box] = graph_dataframe["boxes_list_all"]
+        detection_scores = torch.ones(len(list_of_boxes)).to(self.device)
+        for i,box in enumerate(list_of_boxes):
+            if not self.use_gt_detections:
+                detection_scores[i] = box.score
+        graph_dataframe["detection_scores"] = detection_scores
+
         # Add list of available sample_tokens in this graph
         available_sample_tokens: List[str] = []
         sample_token = self.start_frame

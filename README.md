@@ -64,3 +64,5 @@ motmetrics                1.1.3                    pypi_0    pypi
 
 8) install ujson 5.3.0 
 pip install ujson
+
+9) Center Point Detections from https://github.com/tianweiy/CenterPoint/tree/master/configs/nusc

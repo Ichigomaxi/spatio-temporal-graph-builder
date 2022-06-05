@@ -67,6 +67,10 @@ class NuscenesMPNTracker(MPNTracker):
         self.tracking_threshold = tracking_threshold
         print("Initialized Nuscenes Tracker")
 
+        if "use_gt_detections" in self.dataset_params:
+            assert not((use_gt == True) and (self.dataset_params["use_gt_detections"]==False)),\
+                "Incompatible configurations. Impossible to use ground truth edge labels while loading external detections"
+
     def _predict_edges(self, graph_obj:Graph):
         """
 
@@ -93,17 +97,21 @@ class NuscenesMPNTracker(MPNTracker):
                     nuscenes_handle = dataset.nuscenes_handle)
         mot_graph.graph_obj.tracking_IDs = tracking_IDs
         mot_graph.graph_obj.tracking_confidence_by_node_id = tracking_confidence_by_node_id
-        if self.use_gt:
-            mot_graph.graph_obj.tracking_confidence_by_node_id = torch.ones_like(tracking_confidence_by_node_id)
+        # if self.use_gt:
+        #     mot_graph.graph_obj.tracking_confidence_by_node_id = torch.ones_like(tracking_confidence_by_node_id)
 
         return tracking_ID_dict
 
     def _load_and_infere_mot_graph(self,scene_token:str, sample_token:str):
         dataset:NuscenesMOTGraphDataset = self.dataset
+        
+        inference_mode = not self.dataset_params["use_gt_detections"]
+
         mot_graph:NuscenesMotGraph = dataset.get_from_frame_and_seq(
                                                 scene_token ,
                                                 sample_token ,
-                                                return_full_object = True)
+                                                return_full_object = True,
+                                                inference_mode=inference_mode)
         # Compute edge predictions
         edge_preds = self._predict_edges(mot_graph.graph_obj)
         mot_graph.graph_obj.edge_preds = edge_preds

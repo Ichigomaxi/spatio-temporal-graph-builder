@@ -5,6 +5,7 @@ import torch
 from datasets.nuscenes.classes import ALL_NUSCENES_CLASS_NAMES, id_from_name
 from nuscenes.utils.geometry_utils import transform_matrix
 from pyquaternion import Quaternion
+from nuscenes.nuscenes import Box
 
 def get_all_samples_2_list(nusc:NuScenes, scene_token:str) -> List[str]:
     # init List
@@ -176,7 +177,7 @@ def get_sensor_pose(nuscenes_handle:NuScenes,
 
     assert sensor_channel == sensor_record['channel'], "Is not the same channel! :\n Given: {} \n Expected {}".format(sensor_record, sensor_channel)
     
-    translation_sensor_from_ego_frame = current_cs_record['translation']
+    translation_sensor_from_ego_frame:List[float] = current_cs_record['translation']
     rotation_sensor_from_ego_frame = Quaternion(current_cs_record['rotation'])
 
     return translation_sensor_from_ego_frame, rotation_sensor_from_ego_frame
@@ -191,7 +192,7 @@ def get_ego_pose(nuscenes_handle:NuScenes,
 
     # TODO transformation
     # Homogeneous transformation matrix from global to _current_ ego car frame.
-    translation_ego_from_world_frame = ref_pose_record['translation']
+    translation_ego_from_world_frame:List[float] = ref_pose_record['translation']
     rotation_ego_from_world_frame = Quaternion(ref_pose_record['rotation'])
 
     return translation_ego_from_world_frame, rotation_ego_from_world_frame
@@ -349,3 +350,37 @@ def get_gt_sample_annotation_pose(nuscenes_handle:NuScenes,
     assert translation_world_frame is not None and orientation_world_frame is not None
 
     return translation_world_frame, orientation_world_frame
+
+def transform_boxes_from_world_2_ego(boxes:List[Box], nuscenes_handle:NuScenes, sensor_channel:str,sample_token):
+    translation, rotation = get_ego_pose(nuscenes_handle, 
+                            sensor_channel=sensor_channel,
+                            sample_token=sample_token)
+    for box in boxes:
+        # Move box to ego vehicle coord system.
+        box.translate(-np.array(translation))
+        box.rotate(rotation.inverse)
+
+def transform_boxes_from_world_2_sensor(boxes:List[Box], 
+                            nuscenes_handle:NuScenes, 
+                            sensor_channel:str,
+                            sample_token:str):
+
+    translation_ego, rotation_ego = get_ego_pose(nuscenes_handle, 
+                            sensor_channel=sensor_channel,
+                            sample_token=sample_token)
+    translation_sensor, rotation_sensor = get_sensor_pose(nuscenes_handle, 
+                            sensor_channel=sensor_channel,
+                            sample_token=sample_token)
+    # Set translation to negative
+    translation_ego = -np.array(translation_ego)
+    translation_sensor = -np.array(translation_sensor)
+    # Invert rotations
+    rotation_ego = rotation_ego.inverse
+    rotation_sensor = rotation_sensor.inverse
+    for box in boxes:
+        # Move box to ego vehicle coord system.
+        box.translate(translation_ego)
+        box.rotate(rotation_ego)
+        #  Move box to sensor coord system.
+        box.translate(translation_sensor)
+        box.rotate(rotation_sensor)

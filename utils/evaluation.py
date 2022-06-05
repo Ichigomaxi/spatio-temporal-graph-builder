@@ -818,7 +818,8 @@ def add_tracked_boxes_to_submission(submission: Dict[str, Dict[str, Any]],
         class_id :int = class_id.tolist()
         tracking_name : str = name_from_id(class_id= class_id) # name_from_id(instance.class_id)
         # TRACKING SCORE = Confidence for detection
-        tracking_score:torch.Tensor = mot_graph.graph_obj.tracking_confidence_by_node_id[node_id]
+        # tracking_score:torch.Tensor = mot_graph.graph_obj.tracking_confidence_by_node_id[node_id]
+        tracking_score:torch.Tensor = mot_graph.graph_dataframe['detection_scores'][node_id]
         tracking_score : float = tracking_score.squeeze().tolist() # confidence 
 
         tracking_box_dict: Dict[str, Any] = build_results_dict(current_sample_token, translation,

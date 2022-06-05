@@ -6,13 +6,13 @@ from nuscenes.nuscenes import NuScenes
 import torch
 import time
 import pickle
+from utils.inputs import load_detections_nuscenes_detection_submission_file
 
 class NuscenesMOTGraphDataset(object):
     """
     Adopted from MOTGraphDataset from https://github.com/dvl-tum/mot_neural_solver
     Main Dataset Class. It is used to sample graphs from a a set of MOT sequences by instantiating MOTGraph objects.
-    It is used both for sampling small graphs for training, as well as for loading entire sequence's graphs
-    for testing.
+    It is used both for sampling small graphs for training.
     Its main method is 'get_from_frame_and_seq', where given sequence name and a starting frame position, a graph is
     returned.
     """
@@ -36,12 +36,19 @@ class NuscenesMOTGraphDataset(object):
             self.nuscenes_dataset = NuscenesDataset(self.dataset_params["dataset_version"],
                                                 self.dataset_params["dataroot"])
 
-        
         self.nuscenes_handle = self.nuscenes_dataset.nuscenes_handle
 
         self.seqs_to_retrieve:List[dict] = self._get_seqs_to_retrieve_from_splits(splits)
         self.seq_frame_ixs:List[Tuple[str,str]] = []
+        self.frames_to_detection_boxes = None
 
+        # Load Detections from dections submission style file
+        if "use_gt_detections" in self.dataset_params \
+            and self.dataset_params["use_gt_detections"] == False:
+            self.frames_to_detection_boxes = load_detections_nuscenes_detection_submission_file(self.dataset_params["det_file_path"])
+
+
+        # Sequence the dataset
         if self.seqs_to_retrieve:
             # Index the dataset (i.e. assign a pair (scene, starting frame) to each integer from 0 to len(dataset) -1)
             if dataset_params['load_valid_sequence_sample_list'] == True:
@@ -167,29 +174,33 @@ class NuscenesMOTGraphDataset(object):
         # Filter if num_objects less than KNN -param or 1 
         print("Filtering Process:\n Check if any Mot Graph are not buildable due to lack of detections")
         start = time.time()
-        
-        construction_possibility_checked = True # due to previous filtering
-        filtered_sample_list_new = []
-        for scene_sample_tuple in filtered_sample_list:
-            scene_token, init_sample_token = scene_sample_tuple
-            start_frame = init_sample_token
-            mot_graph_analyzer = NuscenesMotGraphAnalyzer(
-                                        nuscenes_handle = self.nuscenes_handle,
-                                        start_frame = start_frame,
-                                        max_frame_dist = self.dataset_params['max_frame_dist'],
-                                        construction_possibility_checked = construction_possibility_checked,
-                                        filterBoxes_categoryQuery= self.dataset_params["filterBoxes_categoryQuery"],
-                                        adapt_knn_param = self.dataset_params["adapt_knn_param"],
-                                        device= self.device)
-       
-            if not mot_graph_analyzer.contains_dummy_objects():
-                filtered_sample_list_new.append(scene_sample_tuple)
+        # take on older configs which do not explicitly contain this new param
+        if ("filter_for_buildable_sample_frames" not in self.dataset_params)\
+            or ("filter_for_buildable_sample_frames" in self.dataset_params
+            and self.dataset_params["filter_for_buildable_sample_frames"]):
 
+            construction_possibility_checked = True # due to previous filtering
+            filtered_sample_list_new = []
+            for scene_sample_tuple in filtered_sample_list:
+                scene_token, init_sample_token = scene_sample_tuple
+                start_frame = init_sample_token
+                mot_graph_analyzer = NuscenesMotGraphAnalyzer(
+                                            nuscenes_handle = self.nuscenes_handle,
+                                            start_frame = start_frame,
+                                            max_frame_dist = self.dataset_params['max_frame_dist'],
+                                            construction_possibility_checked = construction_possibility_checked,
+                                            filterBoxes_categoryQuery= self.dataset_params["filterBoxes_categoryQuery"],
+                                            adapt_knn_param = self.dataset_params["adapt_knn_param"],
+                                            device= self.device)
+        
+                if not mot_graph_analyzer.contains_dummy_objects():
+                    filtered_sample_list_new.append(scene_sample_tuple)
+            filtered_sample_list = filtered_sample_list_new
         print("Finished Filtering:\n Now remaining mot graph samples should not contain any dummy boxes")
         end = time.time()
         print("Elapsed Time for filtering",end - start, "seconds")
         print('---------------------------------------------')
-        filtered_sample_list = filtered_sample_list_new
+        
 
         return filtered_sample_list
 
@@ -237,10 +248,12 @@ class NuscenesMOTGraphDataset(object):
                                     nuscenes_handle = self.nuscenes_handle,
                                     start_frame = start_frame,
                                     max_frame_dist = self.dataset_params['max_frame_dist'],
-                                    filterBoxes_categoryQuery= self.dataset_params["filterBoxes_categoryQuery"],
+                                    filterBoxes_categoryQuery = self.dataset_params["filterBoxes_categoryQuery"],
                                     adapt_knn_param = self.dataset_params["adapt_knn_param"],
-                                    device= self.device,
-                                    dataset_params= self.dataset_params)
+                                    device = self.device,
+                                    dataset_params = self.dataset_params, 
+                                    detection_dict = self.frames_to_detection_boxes,
+                                    inference_mode = inference_mode)
 
         # Construct the Graph Network's input
         mot_graph.construct_graph_object(
@@ -248,7 +261,8 @@ class NuscenesMOTGraphDataset(object):
                         edge_feature_mode = self.dataset_params['edge_feature_mode'])
         
         if self.mode in ('train', 'val', "train_detect", "train_track",
-                  "mini_train", "mini_val"):
+                  "mini_train", "mini_val") \
+            and self.dataset_params["use_gt_detections"]:
             mot_graph.assign_edge_labels(self.dataset_params["label_type"])
 
         if return_full_object:

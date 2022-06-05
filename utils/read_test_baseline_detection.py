@@ -7,13 +7,24 @@ import json
 # Load the summary/ submission 
 if __name__ == "__main__":
     
-    # change this
-    dirpath ="/media/HDD2/Datasets/nuscenes_baseline_detections"
-    detections_path = "megvii/megvii_val.json" 
+    # change this #####################################################################
+    # dirpath ="/media/HDD2/Datasets/nuscenes_baseline_detections"
+    # detections_path = "megvii/megvii_val.json" 
     # detections_path = "megvii_test.json"
     # detections_path = "megvii_train.json"     
 
-    ## Leave this
+    # dirpath = "/media/HDD2/Datasets/nuscenes_CBMOT_detections/resources"
+    # detections_path = "centertrack_origin.json"
+    # detections_path = "centertrack_tracks.json"
+    # # CenterPoint Detection centerpoint_voxel_1440 - after bugfix 
+    # detections_path = "infos_val_10sweeps_withvelo_filter_True.json"
+
+    # CenterPoint Detection centerpoint_voxel_1440_dcn(flip) - (depreacted, before bugfix)
+    dirpath = "/media/HDD2/Datasets/nuscenes_EagerMOT_detections"
+    detections_path = "centerpoint_3Ddetections/val/infos_val_10sweeps_withvelo_filter_True.json"
+    detections_path = "centerpoint_3Ddetections/val/detections.json"
+
+    ## Leave this ######################################################################
     detections_file_path = osp.join(dirpath,detections_path)
     detections_dict:dict = None
     with open(detections_file_path, 'r') as _f:

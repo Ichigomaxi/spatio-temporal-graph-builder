@@ -11,15 +11,17 @@ with open(config_path, 'r') as _f:
             cfg_ = TrackingConfig.deserialize(json.load(_f))
 # TRACKING_NAMES = cfg_.tracking_names
 
-result_path_ = "/media/HDD2/students/maximilian/spatio-temporal-gnn/experiments/"
-experiment = "06-02__15-28_evaluation"
-local_tracking_filepath = "val_tracking.json"
+result_path_ = "/media/HDD2/students/maximilian/eagermot/"
+
+experiment = "val"
+local_tracking_filepath = "v1.0-trainval_tracking.json"
 
 result_path_ = osp.join(result_path_,experiment, local_tracking_filepath)
 
 eval_set_ = "val"
 
-output_dir_=  '/media/HDD2/students/maximilian/spatio-temporal-gnn/mot_metric_afterprocessing/'
+# output_dir_=  '/media/HDD2/students/maximilian/spatio-temporal-gnn/mot_metric_afterprocessing/'
+output_dir_=  '/media/HDD2/students/maximilian/eagermot/'
 output_dir_ = osp.join(output_dir_,experiment, eval_set_)
 
 
