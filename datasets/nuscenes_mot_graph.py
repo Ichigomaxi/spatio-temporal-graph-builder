@@ -24,7 +24,7 @@ from utility import filter_boxes, get_box_centers, is_same_instance
 from utils.nuscenes_helper_functions import (determine_class_id,
                                              get_sample_data_table,
                                              is_valid_box, is_valid_box_torch,
-                                             skip_sample_token, transform_boxes_from_world_2_sensor)
+                                             skip_sample_token, transform_boxes_from_world_2_sensor, transform_detections_lidar2world_frame)
 
 # For dummy objects
 from datasets.mot_graph import Graph
@@ -133,6 +133,7 @@ class NuscenesMotGraph(object):
             if sample_token in self.detection_dict:
                 # Boxes are already filtered to only include detections from the nuscenes tracking challenge
                 boxes:List[Box] = self.detection_dict[sample_token]
+                initial_boxes:List[Box] = [box.copy() for box in boxes]
                 ##################################################################
                 # Only need to filter out specific classes if wanted... but not necessary for challenge
                 # filter_detection_boxes()
@@ -140,7 +141,11 @@ class NuscenesMotGraph(object):
                 # Transforms detections boxes from world frame into sensor (LIDAR) frame
                 # Get transforms
                 transform_boxes_from_world_2_sensor(boxes, self.nuscenes_handle, sensor_channel, sample_token)
-
+                for i,box in enumerate(boxes):
+                    translation_world, orientation_world = transform_detections_lidar2world_frame(self.nuscenes_handle,box.center.tolist(),box.orientation, sample_token)
+                    intial_box: Box = initial_boxes[i]
+                    assert np.sum(intial_box.center - np.asarray(translation_world)) < 1e-8
+                    assert orientation_world.absolute_distance(orientation_world, intial_box.orientation ) < 1e-8
             else:
                 boxes = []
         else:
@@ -186,7 +191,7 @@ class NuscenesMotGraph(object):
         # append dict to graph_dataframe
         boxes_dict= {}
         for i in range(self.max_frame_dist):
-            boxes = self._load_detections_from_frame_from_sensor(sample_token, sensor_channel,load_given_detections)
+            boxes = self._load_detections_from_frame_from_sensor(sample_token, sensor_channel, load_given_detections)
             boxes_dict[i] = boxes
             #Move to next sample
             sample_token = skip_sample_token(sample_token,0,self.nuscenes_handle)
