@@ -133,36 +133,11 @@ class NuscenesMotGraph(object):
             if sample_token in self.detection_dict:
                 # Boxes are already filtered to only include detections from the nuscenes tracking challenge
                 boxes:List[Box] = self.detection_dict[sample_token]
-                initial_boxes:List[Box] = [box.copy() for box in boxes]
+                # initial_boxes:List[Box] = [box.copy() for box in boxes]
                 ##################################################################
                 # Only need to filter out specific classes if wanted... but not necessary for challenge
                 # filter_detection_boxes()
                 ###################################################################
-                # Transforms detections boxes from world frame into sensor (LIDAR) frame
-                # Get transforms
-                sd_record = get_sample_data_table(self.nuscenes_handle, sensor_channel, sample_token)
-                cs_record = self.nuscenes_handle.get('calibrated_sensor', sd_record['calibrated_sensor_token'])
-                sensor_record = self.nuscenes_handle.get('sensor', cs_record['sensor_token'])
-                pose_record = self.nuscenes_handle.get('ego_pose', sd_record['ego_pose_token'])
-                box_list = []
-                for box in boxes:
-                    # Move box to ego vehicle coord system.
-                    box.translate(-np.array(pose_record['translation']))
-                    box.rotate(Quaternion(pose_record['rotation']).inverse)
-
-                    #  Move box to sensor coord system.
-                    box.translate(-np.array(cs_record['translation']))
-                    box.rotate(Quaternion(cs_record['rotation']).inverse)
-
-
-                    box_list.append(box)
-                boxes = box_list
-                # transform_boxes_from_world_2_sensor(boxes, self.nuscenes_handle, sensor_channel, sample_token)
-                # for i,box in enumerate(boxes):
-                #     translation_world, orientation_world = transform_detections_lidar2world_frame(self.nuscenes_handle,box.center.tolist(),box.orientation, sample_token)
-                #     intial_box: Box = initial_boxes[i]
-                #     assert np.sum(intial_box.center - np.asarray(translation_world)) < 1e-8
-                #     assert orientation_world.absolute_distance(orientation_world, intial_box.orientation ) < 1e-8
             else:
                 boxes = []
         else:
@@ -269,10 +244,10 @@ class NuscenesMotGraph(object):
             t_centers_list_i += torch.tensor([0,0,self.SPATIAL_SHIFT_TIMEFRAMES * centers_list_i_key]).to(self.device)
             t_centers_list = torch.cat([t_centers_list, t_centers_list_i], dim = 0 ).to(self.device)
 
-            computed_differences = torch.mean(t_centers_list_i[:,2]) - computed_differences
+            # computed_differences = torch.mean(t_centers_list_i[:,2]) - computed_differences
         
-        assert computed_differences > (self.SPATIAL_SHIFT_TIMEFRAMES - 5) \
-                and computed_differences < (self.SPATIAL_SHIFT_TIMEFRAMES + 5)
+        # assert computed_differences > (self.SPATIAL_SHIFT_TIMEFRAMES - 5) \
+        #         and computed_differences < (self.SPATIAL_SHIFT_TIMEFRAMES + 5)
         graph_dataframe["centers_list_all"] = t_centers_list
 
         # Add tensor that encodes

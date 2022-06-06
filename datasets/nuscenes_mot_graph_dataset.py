@@ -1,12 +1,20 @@
+import pickle
+import time
 from ctypes import ArgumentError
 from typing import List, Tuple
-from datasets.nuscenes_mot_graph import NuscenesMotGraph, NuscenesMotGraphAnalyzer
-from datasets.NuscenesDataset import NuscenesDataset
-from nuscenes.nuscenes import NuScenes
+
+import numpy
 import torch
-import time
-import pickle
 from utils.inputs import load_detections_nuscenes_detection_submission_file
+from utils.nuscenes_helper_functions import (
+    transform_boxes_from_world_2_sensor,
+    transform_detections_lidar2world_frame)
+
+from datasets.nuscenes_mot_graph import (NuscenesMotGraph,
+                                         NuscenesMotGraphAnalyzer)
+from datasets.NuscenesDataset import NuscenesDataset
+from nuscenes.nuscenes import Box, NuScenes
+
 
 class NuscenesMOTGraphDataset(object):
     """
@@ -42,14 +50,9 @@ class NuscenesMOTGraphDataset(object):
         self.seq_frame_ixs:List[Tuple[str,str]] = []
         self.frames_to_detection_boxes = None
 
-        # Load Detections from dections submission style file
-        if "use_gt_detections" in self.dataset_params \
-            and self.dataset_params["use_gt_detections"] == False:
-            self.frames_to_detection_boxes = load_detections_nuscenes_detection_submission_file(self.dataset_params["det_file_path"])
-
-
-        # Sequence the dataset
         if self.seqs_to_retrieve:
+
+            # Sequence the dataset
             # Index the dataset (i.e. assign a pair (scene, starting frame) to each integer from 0 to len(dataset) -1)
             if dataset_params['load_valid_sequence_sample_list'] == True:
             
@@ -83,6 +86,10 @@ class NuscenesMOTGraphDataset(object):
                 print("##########################################################")
             else:
                 self.seq_frame_ixs = self._index_dataset()
+            # Load Detections from dections submission style file
+            if "use_gt_detections" in self.dataset_params \
+            and self.dataset_params["use_gt_detections"] == False:
+                self.frames_to_detection_boxes = self._load_external_detections()
 
     def _get_seqs_to_retrieve_from_splits(self, splits:dict)-> List[dict]:
         """
@@ -117,6 +124,47 @@ class NuscenesMOTGraphDataset(object):
         seqs_to_retrieve = [sequences_by_name[scene_name] for scene_name in scene_names]
 
         return seqs_to_retrieve
+
+    def _load_external_detections(self):
+        """
+        loads all detections that are beeing considered by the selected scenes
+        Also transforms each detection into its corresponding LIDAR-frame
+        """
+        first_filter_start_time = time.time()
+        
+        split_scene_list = self.seqs_to_retrieve
+        # Load detections
+        frames_to_detection_boxes = load_detections_nuscenes_detection_submission_file(self.dataset_params["det_file_path"])
+
+        # Transforms detections boxes from world frame into sensor (LIDAR) frame
+        sensor_channel = "LIDAR_TOP"
+        print('############################################################')
+        print('Starting to transform the detections into {}-frame\n {}-Datasplit'.format(sensor_channel,self.mode))
+        # Iterate through list of selected scene-tables
+        for scene in split_scene_list:
+            last_sample_token =""
+            sample_token = scene['first_sample_token']
+            while(last_sample_token == ""):
+                sample = self.nuscenes_handle.get('sample', sample_token)
+                detection_boxes = frames_to_detection_boxes[sample_token]
+                initial_boxes:List[Box] = [box.copy() for box in detection_boxes]
+                transform_boxes_from_world_2_sensor(detection_boxes, self.nuscenes_handle, sensor_channel, sample_token)
+                # Plausibility test
+                for i,box in enumerate(detection_boxes):
+                    translation_world, orientation_world = transform_detections_lidar2world_frame(self.nuscenes_handle,box.center.tolist(),box.orientation, sample_token)
+                    intial_box: Box = initial_boxes[i]
+                    assert numpy.sum(intial_box.center - numpy.asarray(translation_world)) < 1e-8
+                    assert orientation_world.absolute_distance(orientation_world, intial_box.orientation ) < 1e-8
+                sample_token = sample["next"]
+                if(sample["token"]== scene['last_sample_token']):
+                    last_sample_token = scene['last_sample_token']
+                    
+        first_filter_end_time = time.time()
+        print('############################################################')
+        print('Finished to transform the detections into {}-frame\n {}-Datasplit'.format(sensor_channel,self.mode))
+        print("Elapsed Time for transformation",first_filter_end_time - first_filter_start_time, "seconds")
+
+        return frames_to_detection_boxes
 
     def _index_dataset(self):
         """
