@@ -135,7 +135,7 @@ class NuscenesMOTGraphDataset(object):
         split_scene_list = self.seqs_to_retrieve
         # Load detections
         frames_to_detection_boxes = load_detections_nuscenes_detection_submission_file(self.dataset_params["det_file_path"])
-
+        filtered_frames_to_det_boxes_dict = {}
         # Transforms detections boxes from world frame into sensor (LIDAR) frame
         sensor_channel = "LIDAR_TOP"
         print('############################################################')
@@ -155,6 +155,7 @@ class NuscenesMOTGraphDataset(object):
                     intial_box: Box = initial_boxes[i]
                     assert numpy.sum(intial_box.center - numpy.asarray(translation_world)) < 1e-8
                     assert orientation_world.absolute_distance(orientation_world, intial_box.orientation ) < 1e-8
+                filtered_frames_to_det_boxes_dict[sample_token] = detection_boxes
                 sample_token = sample["next"]
                 if(sample["token"]== scene['last_sample_token']):
                     last_sample_token = scene['last_sample_token']
@@ -164,7 +165,7 @@ class NuscenesMOTGraphDataset(object):
         print('Finished to transform the detections into {}-frame\n {}-Datasplit'.format(sensor_channel,self.mode))
         print("Elapsed Time for transformation",first_filter_end_time - first_filter_start_time, "seconds")
 
-        return frames_to_detection_boxes
+        return filtered_frames_to_det_boxes_dict
 
     def _index_dataset(self):
         """
