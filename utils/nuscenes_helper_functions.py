@@ -369,15 +369,21 @@ def transform_boxes_from_world_2_sensor(boxes:List[Box],
         box.translate(translation_ego)
         box.rotate(rotation_ego)
         # Validate with own calculation
-        center = ego_2_world_transform @ np.asarray([center,1.0])
+        center.append(1.0)
+        center_homogeneous:np.ndarray = np.asarray(center)
+        center_homogeneous = ego_2_world_transform @ center_homogeneous
         rotation_matrix_inSE3 = ego_2_world_transform @ rotation_matrix_inSE3
-        assert (np.sum(center - box.center)<1e-6).all()
+        assert (np.sum(center_homogeneous[:3] - box.center)<1e-6).all()
         rotation_absolute_distance = (box.orientation.absolute_distance(box.orientation,Quaternion(matrix=rotation_matrix_inSE3)))
-        assert ((rotation_absolute_distance)<1e-5).all()
+        assert ((rotation_absolute_distance)<1e-5)
         
         #  Move box to sensor coord system.
         box.translate(translation_sensor)
         box.rotate(rotation_sensor)
 
-        sensor_2_ego_transform
+        center_homogeneous = sensor_2_ego_transform @ center_homogeneous
+        rotation_matrix_inSE3 = sensor_2_ego_transform @ rotation_matrix_inSE3
+        assert (np.sum(center_homogeneous[:3] - box.center)<1e-6).all()
+        rotation_absolute_distance = (box.orientation.absolute_distance(box.orientation,Quaternion(matrix=rotation_matrix_inSE3)))
+        assert ((rotation_absolute_distance)<1e-5)
 
