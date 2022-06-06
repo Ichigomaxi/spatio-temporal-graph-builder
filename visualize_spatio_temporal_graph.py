@@ -1,17 +1,18 @@
-import argparse
-from random import sample
+import sacred
+from sacred import SETTINGS, Experiment
+
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 from datasets.NuscenesDataset import NuscenesDataset
 # from datasets.NuscenesDataset import NuscenesDataset
-from visualization.visualize_graph import main, visualize_input_graph, visualize_output_graph, visualize_geometry_list
-import sacred
-from sacred import Experiment
+from visualization.visualize_graph import (main, visualize_basic_graph,
+                                           visualize_geometry_list,
+                                           visualize_input_graph,
+                                           visualize_output_graph)
 
-from sacred import SETTINGS
 SETTINGS.CONFIG.READ_ONLY_CONFIG=False
 
 ex = Experiment()
-ex.add_config(r'configs\visualize_mini_val.yaml')
+ex.add_config(r'configs\\visualize_mini_val.yaml')
 # ex.add_config({'run_id': 'evaluation',
 #                'add_date': True})
 
@@ -28,7 +29,11 @@ def main(_config, _run):
     for i in range(len(mot_graph_dataset)):
         scene_token, sample_token = mot_graph_dataset.seq_frame_ixs[i]
         mot_graph = mot_graph_dataset.get_from_frame_and_seq(scene_token, sample_token,True,False)
-        geometry_list = visualize_input_graph(mot_graph)
+
+        geometry_list = visualize_basic_graph(mot_graph)
+        
+        # geometry_list = visualize_input_graph(mot_graph)
         visualize_geometry_list(geometry_list)
-        geometry_list = visualize_output_graph(mot_graph)
-        visualize_geometry_list(geometry_list)
+
+        # geometry_list = visualize_output_graph(mot_graph)
+        # visualize_geometry_list(geometry_list)
