@@ -298,10 +298,6 @@ def transform_detections_lidar2world_frame(nuscenes_handle:NuScenes,
 
     # Double check correctness if possible
     if sample_annotation_token is not None:
-        # sample_annotation = nuscenes_handle.get('sample_annotation', sample_annotation_token)
-        # translation_world_frame = sample_annotation["translation"]
-        # rotation_world_frame = sample_annotation["rotation"]
-        # rotation_world_frame = Quaternion(rotation_world_frame)
         translation_world_frame, rotation_world_frame = \
                 get_gt_sample_annotation_pose(nuscenes_handle,sample_annotation_token)
         #TODO Assertion
@@ -310,22 +306,6 @@ def transform_detections_lidar2world_frame(nuscenes_handle:NuScenes,
         assert absolute_error < absolute_error_threshold, 'Translation was not transformed correctly into world coordinates'
         absolute_distance = (rotation_world_frame.absolute_distance(rotation_world_frame,transformed_rotation))
         assert (absolute_distance < absolute_error_threshold), 'Rotation was not transformed correctly into world coordinates'
-    # Fuse four transformation matrices into one and perform transform.
-    # trans_matrix = reduce(np.dot, [ref_from_car, car_from_global, global_from_car, car_from_current])
-    # current_pc.transform(trans_matrix)
-
-    # sd_record = self.get('sample_data', ref_sd_token)
-    # cs_record = self.get('calibrated_sensor', sd_record['calibrated_sensor_token'])
-    # sensor_record = self.get('sensor', cs_record['sensor_token'])
-    # pose_record = self.get('ego_pose', sd_record['ego_pose_token'])
-    
-    # #  Move box to ego vehicle coord system.
-    # transformed_box.translate(np.array(cs_record['translation']))
-    # transformed_box.rotate(Quaternion(cs_record['rotation']))
-
-    # # Move box to world coord system.
-    # transformed_box.translate(np.array(pose_record['translation']))
-    # transformed_box.rotate(Quaternion(pose_record['rotation']))
 
     return transformed_translation, transformed_rotation
 
@@ -364,7 +344,11 @@ def transform_boxes_from_world_2_sensor(boxes:List[Box],
                             nuscenes_handle:NuScenes, 
                             sensor_channel:str,
                             sample_token:str):
+    sensor_2_ego_transform = get_sensor_2_ego_transformation_matrix(nuscenes_handle,sensor_channel,sample_token,inverse=True)
+    
+    ego_2_world_transform = get_ego_2_world_transformation_matrix(nuscenes_handle,sensor_channel,sample_token,inverse=True)
 
+    
     translation_ego, rotation_ego = get_ego_pose(nuscenes_handle, 
                             sensor_channel=sensor_channel,
                             sample_token=sample_token)
@@ -378,9 +362,22 @@ def transform_boxes_from_world_2_sensor(boxes:List[Box],
     rotation_ego = rotation_ego.inverse
     rotation_sensor = rotation_sensor.inverse
     for box in boxes:
+        center = box.center.copy().tolist()
+        rotation_matrix_inSE3 = box.orientation.transformation_matrix.copy()
+
         # Move box to ego vehicle coord system.
         box.translate(translation_ego)
         box.rotate(rotation_ego)
+        # Validate with own calculation
+        center = ego_2_world_transform @ np.asarray([center,1.0])
+        rotation_matrix_inSE3 = ego_2_world_transform @ rotation_matrix_inSE3
+        assert (np.sum(center - box.center)<1e-6).all()
+        rotation_absolute_distance = (box.orientation.absolute_distance(box.orientation,Quaternion(matrix=rotation_matrix_inSE3)))
+        assert ((rotation_absolute_distance)<1e-5).all()
+        
         #  Move box to sensor coord system.
         box.translate(translation_sensor)
         box.rotate(rotation_sensor)
+
+        sensor_2_ego_transform
+
