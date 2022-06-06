@@ -660,14 +660,21 @@ class NuscenesMotGraphAnalyzer(NuscenesMotGraph):
                     filterBoxes_categoryQuery:Union[str,List[str]] = None,
                     construction_possibility_checked = True,
                     adapt_knn_param = False,
-                    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")) -> None:
+                    device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+                    dataset_params: dict = None,
+                    detection_dict: Dict[str,Any] = None,
+                    inference_mode: bool = False
+                    ) -> None:
         # Inherit parent init
         super().__init__(
                     nuscenes_handle, start_frame , max_frame_dist,
                     filterBoxes_categoryQuery,
                     construction_possibility_checked,
                     adapt_knn_param,
-                    device = device)
+                    device = device,
+                    dataset_params= dataset_params,
+                    detection_dict= detection_dict,
+                    inference_mode= inference_mode)
 
     def _construct_graph_dataframe(self):
         graph_dataframe = {}

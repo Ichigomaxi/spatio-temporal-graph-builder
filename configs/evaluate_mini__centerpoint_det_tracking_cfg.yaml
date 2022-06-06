@@ -79,7 +79,7 @@ dataset_params:
     spatial_shift_timeframes : 20
     max_temporal_edge_length : 2
     
-  max_frame_dist: 12 # Maximum number of frames contained in each graph sampled graph
+  max_frame_dist: 3 # Maximum number of frames contained in each graph sampled graph
   # Node Features
   node_feature_mode : "centers_and_time" # determines the included node features 
   # Edge Features

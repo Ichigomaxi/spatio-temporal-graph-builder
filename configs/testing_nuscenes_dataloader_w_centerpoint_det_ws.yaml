@@ -1,30 +1,15 @@
-# Config for naming logging directory
-run_id: 'evaluation'
-add_date: True
-
-# Config for logging directory path
-output_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn' 
-
-# Config to load previous model
-# load_checkpoint : False # Set to true to load a previous checkpoint
-# overwrite_saved_hparam: False # Set to true to if you want to use new hyperparameters(Defined in this config file) 
-# ckpt_path: 'experiments/path_/to/_checkpoint.ckpt'
-# ckpt_path: 'experiments/05-05_18:30_train_w_LR_scheduler/model_checkpoints/epoch=17-step=48329.ckpt'
-ckpt_path: "experiments/05-08_19:58_train_w_default_config/model_checkpoints/epoch=48-step=263080.ckpt"
-
-# Config for modes from the nuscenes split
-# train_dataset_mode: "train"
-# eval_dataset_mode: "val"
-test_dataset_mode: "val"
-
 gpu_settings:
   device_type: "gpu"
   # Specify which GPUs to use
   device_id: [1] # Specifically takes the gpu associated with cuda:1 
-  torch_device: 'cuda:1'
+  torch_device: 'cpu'
+
+# train_dataset_mode: "train"
+# eval_dataset_mode: "val"
+test_dataset_mode: "val"
 
 dataset_params:
-  # Preprocessing ParamsL
+  # Preprocessing Params
   filter_for_buildable_sample_frames: False
   load_valid_sequence_sample_list : False
   # If the above is true then specify the path to the pickle files
@@ -35,7 +20,7 @@ dataset_params:
 
   # Dataset Processing params:
   dataset_version: 'v1.0-trainval'
-  dataroot : '/media/HDD2/Datasets/nuscenes2'
+  dataroot : '/mount/HDD2/Datasets/nuscenes2'
   is_windows_path : False
 
   # Detection Params:
@@ -47,14 +32,14 @@ dataset_params:
   # Filter Parameter
   # Contains a list of nuscenes class labels.
   # Only detections from these clases will be loaded for the graph
-  filterBoxes_categoryQuery: ['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian', 'vehicle.trailer', 'vehicle.truck'] #['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian', 'vehicle.trailer', 'vehicle.truck']
+  # filterBoxes_categoryQuery: ['vehicle.car'] 
+  filterBoxes_categoryQuery: ['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian', 'vehicle.trailer', 'vehicle.truck']
 
   # Graph Construction Parameters
   graph_construction_params:
     spatial_knn_num_neighbors: 4
     temporal_knn_num_neighbors : 4
     spatial_shift_timeframes : 20
-    max_temporal_edge_length : 2
     
   max_frame_dist: 6 # Maximum number of frames contained in each graph sampled graph
   # Node Features
@@ -70,8 +55,6 @@ dataset_params:
   augment: False # Determines whether data augmentation is performed
 
 
-  
-
 data_splits: # See nuscenes.datasplit()
   # train: ['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']
   # val: ['scene-0103', 'scene-0916']
@@ -80,7 +63,48 @@ data_splits: # See nuscenes.datasplit()
 eval_params:
   # Logging / Metrics reporting params
   tensorboard: True
-  save_submission: True
-  use_gt: False
-  tracking_threshold: 0.5
+
+graph_model_params:
+  node_agg_fn: 'sum'
+  num_enc_steps: 5  # Number of message passing steps
+  num_class_steps: 3  # Number of message passing steps during feature vectors are classified (after Message Passing)
+  reattach_initial_nodes: False  # Determines whether initially encoded node feats are used during node updates
+  reattach_initial_edges: True  # Determines whether initially encoded edge feats are used during node updates
+
+  encoder_feats_dict:
+      edge_in_dim: 2
+      edge_fc_dims: [18, 18]
+      edge_out_dim: 2
+      node_in_dim: 4
+      #node_fc_dims: [512, 128]
+      node_fc_dims: [128]
+      node_out_dim: 4
+      dropout_p: 0
+      use_batchnorm: False
   
+  edge_model_feats_dict:
+    # Input size is 1(=node_factor) * 2 * #encoded nodes ('node_out_dim') 
+    # + 2(=edge_factor) * #encoded edges (edge_out_dim)
+    # Make sure last layer's output dimensions 
+    # equal the encoded edge feature size
+    fc_dims: [80, 2] 
+    dropout_p: 0
+    use_batchnorm: False
+
+  node_model_feats_dict:
+    # In size is 1(=node_factor) * encoded nodes('node_out_dim') 
+    # + 1 * encoded edges (edge_out_dim)
+    # Make sure last layer's output dimensions 
+    # equal the encoded node feature size
+    fc_dims: [56, 4]
+    dropout_p: 0
+    use_batchnorm: False
+
+  # only classifies edges 
+  classifier_feats_dict:
+    # edge input must be same output/last layer of edge model, edge_model_feats_dict[fc_dims][-1]
+    edge_in_dim: 2
+    edge_fc_dims: [8]
+    edge_out_dim: 1 # only 1 output for binary classification
+    dropout_p: 0
+    use_batchnorm: False

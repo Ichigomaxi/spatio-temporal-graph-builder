@@ -191,7 +191,9 @@ class NuscenesMOTGraphDataset(object):
                                             construction_possibility_checked = construction_possibility_checked,
                                             filterBoxes_categoryQuery= self.dataset_params["filterBoxes_categoryQuery"],
                                             adapt_knn_param = self.dataset_params["adapt_knn_param"],
-                                            device= self.device)
+                                            device= self.device,
+                                            dataset_params=self.dataset_params,
+                                            detection_dict= self.frames_to_detection_boxes)
         
                 if not mot_graph_analyzer.contains_dummy_objects():
                     filtered_sample_list_new.append(scene_sample_tuple)

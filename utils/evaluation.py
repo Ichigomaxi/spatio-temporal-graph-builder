@@ -327,13 +327,21 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph, tracking_threshold
                 valid_incoming_edge_predictions[valid_edges_mask] = incoming_edge_predictions[valid_edges_mask]
                 ########################################
                 # Get edge predictions and provide the active neighbor and its tracking confindence
-                
-                probabilities = functional.softmax(valid_incoming_edge_predictions, dim=0 )
+                # probabilities = functional.softmax(valid_incoming_edge_predictions, dim=0 )
                 # Get the edge_index with the highest log_likelihood
                 log_probabilities = functional.log_softmax(valid_incoming_edge_predictions, dim=0)
                 local_index = torch.argmax(log_probabilities, dim = 0)
-                assert local_index == torch.argmax(functional.softmax(valid_incoming_edge_predictions, dim=0 ), dim = 0)
-                
+
+                # assert ((torch.exp(log_probabilities) - probabilities) < 1e-5 ).all()
+                # pseudo_local_index = torch.argmax(probabilities, dim = 0)
+                # if local_index != pseudo_local_index:
+                #     print("\nlocal_index argmax(logsoftmax): ", local_index)
+                #     print("\nlocal index argmax(softmax):",pseudo_local_index)
+                # assert local_index == torch.argmax(functional.softmax(valid_incoming_edge_predictions, dim=0 ), dim = 0),\
+                #     "local_index argmax(logsoftmax(weights)) is unequal argmax(softmax(weights))"\
+                #         + "local_index argmax(logsoftmax):{}".format(local_index) \
+                #         + "local index argmax(softmax):{}".format(pseudo_local_index)
+
                 # look for the global edge index
                 global_index = incoming_edge_idx[local_index]
                 active_edge_id = global_index
@@ -344,7 +352,10 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph, tracking_threshold
                 
                 # set active edges
                 active_edge = edge_indices[:,active_edge_id]
-                assert rows[active_edge_id] == active_edge[0]
+                assert rows[active_edge_id] == active_edge[0], \
+                        "active edges id does lead to same active_edge source node" \
+                        + "rows[active_edge_id]: {}".format(rows[active_edge_id])\
+                        + "active_edge[0]: {}".format(active_edge[0])
 
                 # # Describes if an edge is active or inactive. 
                 # # If not active the element is NaN
