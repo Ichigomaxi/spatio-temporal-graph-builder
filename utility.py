@@ -17,6 +17,7 @@ def get_box_centers(boxes : List[Box]):
     for box in boxes:
         centers.append(box.center)
     centers = np.array(centers)
+    # assert boxes[0].center is centers[0]
     return centers
 
 def is_same_instance(nuscenes_handle:NuScenes, \

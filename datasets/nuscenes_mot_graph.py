@@ -145,8 +145,8 @@ class NuscenesMotGraph(object):
                 boxes = []
         else:
             # Append new boxes
-            sample = self.nuscenes_handle.get('sample', sample_token)
-            lidar_top_data_old = self.nuscenes_handle.get('sample_data', sample['data'][sensor_channel])
+            # sample = self.nuscenes_handle.get('sample', sample_token)
+            # lidar_top_data_old = self.nuscenes_handle.get('sample_data', sample['data'][sensor_channel])
             lidar_top_data = get_sample_data_table(self.nuscenes_handle, sensor_channel, sample_token)
 
             _, boxes, _= self.nuscenes_handle.get_sample_data(lidar_top_data['token'], selected_anntokens=None, use_flat_vehicle_coordinates =False)
@@ -236,6 +236,7 @@ class NuscenesMotGraph(object):
         # Ensure that the memory is different than that from the Box-objects
         # List is torch.Tensor
         # append dict to graph_dataframe
+        computed_differences = 0
         t_centers_list:torch.Tensor = torch.empty((0,3)).to(self.device)
         for centers_list_i_key in range(self.max_frame_dist):
             _ ,centers_list_i = graph_dataframe["centers_dict"][centers_list_i_key]
@@ -246,6 +247,10 @@ class NuscenesMotGraph(object):
             t_centers_list_i += torch.tensor([0,0,self.SPATIAL_SHIFT_TIMEFRAMES * centers_list_i_key]).to(self.device)
             t_centers_list = torch.cat([t_centers_list, t_centers_list_i], dim = 0 ).to(self.device)
 
+            computed_differences = torch.mean(t_centers_list_i[:,2]) - computed_differences
+        
+        assert computed_differences > (self.SPATIAL_SHIFT_TIMEFRAMES - 5) \
+                and computed_differences < (self.SPATIAL_SHIFT_TIMEFRAMES + 5)
         graph_dataframe["centers_list_all"] = t_centers_list
 
         # Add tensor that encodes
