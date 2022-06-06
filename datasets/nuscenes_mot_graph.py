@@ -140,12 +140,29 @@ class NuscenesMotGraph(object):
                 ###################################################################
                 # Transforms detections boxes from world frame into sensor (LIDAR) frame
                 # Get transforms
-                transform_boxes_from_world_2_sensor(boxes, self.nuscenes_handle, sensor_channel, sample_token)
-                for i,box in enumerate(boxes):
-                    translation_world, orientation_world = transform_detections_lidar2world_frame(self.nuscenes_handle,box.center.tolist(),box.orientation, sample_token)
-                    intial_box: Box = initial_boxes[i]
-                    assert np.sum(intial_box.center - np.asarray(translation_world)) < 1e-8
-                    assert orientation_world.absolute_distance(orientation_world, intial_box.orientation ) < 1e-8
+                sd_record = get_sample_data_table(self.nuscenes_handle, sensor_channel, sample_token)
+                cs_record = self.nuscenes_handle.get('calibrated_sensor', sd_record['calibrated_sensor_token'])
+                sensor_record = self.nuscenes_handle.get('sensor', cs_record['sensor_token'])
+                pose_record = self.nuscenes_handle.get('ego_pose', sd_record['ego_pose_token'])
+                box_list = []
+                for box in boxes:
+                    # Move box to ego vehicle coord system.
+                    box.translate(-np.array(pose_record['translation']))
+                    box.rotate(Quaternion(pose_record['rotation']).inverse)
+
+                    #  Move box to sensor coord system.
+                    box.translate(-np.array(cs_record['translation']))
+                    box.rotate(Quaternion(cs_record['rotation']).inverse)
+
+
+                    box_list.append(box)
+                boxes = box_list
+                # transform_boxes_from_world_2_sensor(boxes, self.nuscenes_handle, sensor_channel, sample_token)
+                # for i,box in enumerate(boxes):
+                #     translation_world, orientation_world = transform_detections_lidar2world_frame(self.nuscenes_handle,box.center.tolist(),box.orientation, sample_token)
+                #     intial_box: Box = initial_boxes[i]
+                #     assert np.sum(intial_box.center - np.asarray(translation_world)) < 1e-8
+                #     assert orientation_world.absolute_distance(orientation_world, intial_box.orientation ) < 1e-8
             else:
                 boxes = []
         else:
