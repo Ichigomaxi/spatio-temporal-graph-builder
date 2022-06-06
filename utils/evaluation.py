@@ -163,7 +163,8 @@ def filter_out_spatial_edges(incoming_edge_idx:torch.Tensor,
     else:
         if (target_node_time == source_node_times).all() and len(source_node_times) > 0:
             print("not possible")
-        assert (target_node_time != source_node_times).all()
+        assert (target_node_time != source_node_times).all(), \
+            "target_node_time: {}\n source_node_times: {}".format(target_node_time,source_node_times)
     
     return incoming_edge_idx_without_spatial_connections
 
