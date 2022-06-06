@@ -138,8 +138,9 @@ class NuscenesMotGraph(object):
                 # filter_detection_boxes()
                 ###################################################################
                 # Transforms detections boxes from world frame into sensor (LIDAR) frame
-                # Get transform
+                # Get transforms
                 transform_boxes_from_world_2_sensor(boxes, self.nuscenes_handle, sensor_channel, sample_token)
+
             else:
                 boxes = []
         else:
