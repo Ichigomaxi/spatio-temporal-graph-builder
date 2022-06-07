@@ -161,8 +161,21 @@ def filter_out_spatial_edges(incoming_edge_idx:torch.Tensor,
         print("Found a node without any temporal connections! ")
         assert incoming_edge_idx_without_spatial_connections.shape[0] == 0
     else:
-        if (target_node_time == source_node_times).all() and len(source_node_times) > 0:
+        if not (target_node_time != source_node_times).all() and len(source_node_times) > 0:
             print("not possible")
+        if not (target_node_time != source_node_times).all():
+            print("not possible")
+            output_files_dir = '/media/HDD2/students/maximilian/spatio-temporal-gnn/error_graphs'
+            os.makedirs( output_files_dir, exist_ok=True) # Make sure dir exists
+            # Save in pickle format
+            pickle_file_path = osp.join(output_files_dir,"tracking_error_graph_object.pkl")
+            with open(pickle_file_path, 'wb') as f:
+                torch.save(graph_obj,f, pickle_protocol = 4)
+            pickle_file_path = osp.join(output_files_dir,"tracking_error_ncoming_edge_idx_tuple.pkl")
+            with open(pickle_file_path, 'wb') as f:
+                tuple_incoming_edges = (incoming_edge_idx, incoming_edges_without_spatial_connections)
+                torch.save(tuple_incoming_edges,f, pickle_protocol = 4)
+            
         assert (target_node_time != source_node_times).all(), \
             "target_node_time: {}\n source_node_times: {}".format(target_node_time,source_node_times)
     
@@ -277,7 +290,11 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph, tracking_threshold
         Describes the source node that is 
         actively connected by this active edge . If not active the element is NaN
         """
-        edge_indices = mot_graph.graph_obj.edge_index
+        edge_indices:torch.Tensor = mot_graph.graph_obj.edge_index
+        temporal_edges_mask :torch.Tensor = mot_graph.graph_obj.temporal_edges_mask
+        temporal_edge_indices :torch.Tensor = edge_indices[:,temporal_edges_mask[:,0]]
+        temporal_edge_placement_idx2global_placement_idx_map = temporal_edges_mask[:,0].nonzero().squeeze()
+
         edge_preds = mot_graph.graph_obj.edge_preds 
 
         active_connections = torch.zeros_like(edge_preds) * float('nan')
@@ -285,6 +302,10 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph, tracking_threshold
         active_neighbors = torch.zeros_like(edge_preds) *float('nan')
 
         timeframes = range(1,mot_graph.max_frame_dist) # start at 1 to skip first frame
+        global_rows, global_columns = edge_indices[0],edge_indices[1] # COO-format
+        rows, columns = temporal_edge_indices[0], temporal_edge_indices[1] # COO-format
+
+        # timeframe_per_node:torch.Tensor  = mot_graph.graph_obj.timeframe_number
 
         # Iterate in reverse to start from the last frame
         for i in reversed(timeframes): 
@@ -292,31 +313,81 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph, tracking_threshold
             nodes_from_frame_i_mask = mot_graph.graph_dataframe["timeframes_all"] == i
             # nodes_from_frame_i_mask = ~nodes_from_frame_i_mask
             node_idx_from_frame_i = torch.nonzero(nodes_from_frame_i_mask, as_tuple=True)[0]
+            
+
             # filter their incoming edges
             for node_id in node_idx_from_frame_i:
                 #########################################
-                incoming_edge_idx = []
-                rows, columns = edge_indices[0],edge_indices[1] # COO-format
-                edge_mask:torch.Tensor = torch.eq(columns, node_id)
-                incoming_edge_idx = edge_mask.nonzero().squeeze()
-                incoming_edge_idx= filter_out_spatial_edges(incoming_edge_idx, mot_graph.graph_obj)
+                incoming_edge_idx = [] # placement indices reltative to temporal_edges indexing
+                # rows, columns = edge_indices[0],edge_indices[1] # COO-format
+                # rows, columns = temporal_edge_indices[0], temporal_edge_indices[1] # COO-format
+                
+                # Shape[num_temporal_edges]
+                edge_mask:torch.Tensor = torch.eq(columns, node_id) # relative to temporal_edges indexing 
+
+                if edge_mask.any() == False:
+                    # Found a node without temporal edges
+                    # cannot assign any active connections to it 
+                    # it will be considered as a node without any active connections and therefore will be assigned a new trackId
+                    # continue with next node
+                    continue
+                
+                # Shape[num_incoming_edges_for_node_j_in_frame_i]
+                past_edges_mask = rows[edge_mask] < columns[edge_mask]
+                # future_edges_mask = rows[edge_mask] > columns[edge_mask]
+                # if future_edges_mask.any():
+                #     print("there are connections to the future")
+
+                # contains placement indices relative to incoming_edge_idx
+                # past_edges_local_placement_idx = past_edges_mask.nonzero().squeeze()
+                # Shape[num_temporal_past_edges_for_node_j]
+                # contains idx relative to temporal_edges indexing 
+                incoming_edge_idx = incoming_edge_idx[past_edges_mask]
+                
                 if incoming_edge_idx.shape[0] == 0:
                     # Found a node without temporal edges
                     # cannot assign any active connections to it 
                     # it will be considered as a node without any active connections and therefore will be assigned a new trackId
                     # continue with next node
                     continue
-                incoming_edge_idx = filter_for_past_edges(incoming_edge_idx, i, mot_graph.max_frame_dist, mot_graph.graph_obj)
-                if incoming_edge_idx.shape[0] == 0:
-                    # Found a node without temporal edges from the past
-                    # cannot assign any active connections to it 
-                    # it will be considered as a node without any active connections and therefore will be assigned a new trackId
-                    # continue with next node
-                    continue
+
+                # target_node_time = timeframe_per_node[node_id]
+                # source_node_global_idx = temporal_edge_indices[incoming_edge_idx][0]
+                # source_node_times = timeframe_per_node[source_node_global_idx]
+
+                # if not (target_node_time != source_node_times).all():
+                #     print("not possible")
+                #     output_files_dir = '/media/HDD2/students/maximilian/spatio-temporal-gnn/error_graphs'
+                #     os.makedirs( output_files_dir, exist_ok=True) # Make sure dir exists
+                #     # Save in pickle format
+                #     pickle_file_path = osp.join(output_files_dir,"tracking_error_graph_object.pkl")
+                #     with open(pickle_file_path, 'wb') as f:
+                #         torch.save(mot_graph,f, pickle_protocol = 4)
+                #     pickle_file_path = osp.join(output_files_dir,"tracking_error_ncoming_edge_idx_tuple.pkl")
+                # assert (target_node_time != source_node_times).all(), \
+                #     "target_node_time: {}\n source_node_times: {}".format(target_node_time,source_node_times)
+
+                # incoming_edge_idx_old= filter_out_spatial_edges(incoming_edge_idx_old, mot_graph.graph_obj)
+                # if incoming_edge_idx_old.shape[0] == 0:
+                #     # Found a node without temporal edges
+                #     # cannot assign any active connections to it 
+                #     # it will be considered as a node without any active connections and therefore will be assigned a new trackId
+                #     # continue with next node
+                #     continue
+                # incoming_edge_idx_old = filter_for_past_edges(incoming_edge_idx_old, i, mot_graph.max_frame_dist, mot_graph.graph_obj)
+                # if incoming_edge_idx_old.shape[0] == 0:
+                #     # Found a node without temporal edges from the past
+                #     # cannot assign any active connections to it 
+                #     # it will be considered as a node without any active connections and therefore will be assigned a new trackId
+                #     # continue with next node
+                #     continue
+                # assert (torch.sum(incoming_edge_idx_old == incoming_edge_idx,dim=0)).all()
+
                 #######################################
                 # Threshold the incoming predictions. 
                 # Otherwise predictions without probability above a certain threshold will be selected
-                incoming_edge_predictions = edge_preds[incoming_edge_idx]
+                incoming_edge_idx_global = temporal_edge_placement_idx2global_placement_idx_map[incoming_edge_idx]
+                incoming_edge_predictions = edge_preds[incoming_edge_idx_global]
                 valid_edges_mask:torch.Tensor = (incoming_edge_predictions > tracking_threshold)
                 if valid_edges_mask.any()==False:
                     # Given all incoming edges have a prediction probability (tracking certainty) lower than the given threshold
@@ -344,8 +415,10 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph, tracking_threshold
                 #         + "local index argmax(softmax):{}".format(pseudo_local_index)
 
                 # look for the global edge index
-                global_index = incoming_edge_idx[local_index]
-                active_edge_id = global_index
+                temporal_placement_index = incoming_edge_idx[local_index]
+                global_index = temporal_edge_placement_idx2global_placement_idx_map[temporal_placement_index]
+                active_edge_id = global_index # relatice to global graph edge indices
+                
 
                 # assert len(active_edge_id) == 1,"more than one active connection is ambigous!"
                 # tracking_confidence is equal to the highest edge_prediction of the valid incoming edges
@@ -353,9 +426,10 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph, tracking_threshold
                 
                 # set active edges
                 active_edge = edge_indices[:,active_edge_id]
-                assert rows[active_edge_id] == active_edge[0], \
+                global_rows[active_edge_id]
+                assert global_rows[active_edge_id] == active_edge[0], \
                         "active edges id does lead to same active_edge source node" \
-                        + "rows[active_edge_id]: {}".format(rows[active_edge_id])\
+                        + "global_rows[active_edge_id]: {}".format(global_rows[active_edge_id])\
                         + "active_edge[0]: {}".format(active_edge[0])
 
                 # # Describes if an edge is active or inactive. 
@@ -366,8 +440,7 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph, tracking_threshold
                 # tracking_confidence_list[active_edge_id] = tracking_confidence 
                 # # Describes the source node that is 
                 # # actively connected by this active edge . If not active the element is NaN
-                # active_neighbors[active_edge_id] = rows[active_edge_id] 
-                source_node_index = rows[active_edge_id] 
+                source_node_index = global_rows[active_edge_id] 
                 activate_edge_state(active_edge_id, 
                         tracking_confidence=tracking_confidence, 
                         active_neighbor_node_index= source_node_index,

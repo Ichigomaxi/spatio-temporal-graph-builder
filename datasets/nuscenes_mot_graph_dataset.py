@@ -161,9 +161,9 @@ class NuscenesMOTGraphDataset(object):
                     last_sample_token = scene['last_sample_token']
                     
         first_filter_end_time = time.time()
-        print('############################################################')
-        print('Finished to transform the detections into {}-frame\n {}-Datasplit'.format(sensor_channel,self.mode))
+        print('Finished to transform the detections into {}-frame'.format(sensor_channel))
         print("Elapsed Time for transformation",first_filter_end_time - first_filter_start_time, "seconds")
+        print('############################################################')
 
         return filtered_frames_to_det_boxes_dict
 
