@@ -47,6 +47,7 @@ gpu_settings:
 
 dataset_params:
   # Preprocessing ParamsL
+  filter_for_buildable_sample_frames: False
   load_valid_sequence_sample_list : False
   # If the above is true then specify the path to the pickle files
   # Must be absolutepath until now
@@ -63,7 +64,13 @@ dataset_params:
   # Contains a list of nuscenes class labels.
   # Only detections from these clases will be loaded for the graph
   # filterBoxes_categoryQuery: ['vehicle.car'] 
-  filterBoxes_categoryQuery: ['vehicle.car'] 
+  filterBoxes_categoryQuery: ['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian', 'vehicle.trailer', 'vehicle.truck']
+
+  # Detection Params:
+  use_gt_detections: False # If True loaded detections will equal the sample_annotations from the trainval-set 
+  # Path to 3D detections file used for val/test. Must be defined if use_gt_detections==True
+  # det_file_path: "/media/HDD2/Datasets/nuscenes_EagerMOT_detections/centerpoint_3Ddetections/val/infos_val_10sweeps_withvelo_filter_True.json"
+  det_file_path: 'C:\Users\maxil\Documents\projects\master_thesis\centerpoint_detections\infos_val_10sweeps_withvelo_filter_True_CBMOT.json'
 
   # Graph Construction Parameters
   graph_construction_params:
@@ -99,6 +106,6 @@ eval_params:
   visualize_graph : True
   save_graphs : False # only useful if want to visualize built graphs later on
   save_single_graph_submission: False # Only serves to test the json-saving pipeline
-  use_gt: True
-  tracking_threshold: 0
+  use_gt: False
+  tracking_threshold: 0.5
   # check_val_every_n_epoch: 9999

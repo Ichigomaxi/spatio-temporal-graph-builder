@@ -177,6 +177,60 @@ def visualize_input_graph(mot_graph:NuscenesMotGraph):
 
     return geometry_list
 
+def visualize_eval_graph_new(mot_graph:NuscenesMotGraph):
+    geometry_list = []
+    edge_indices = mot_graph.graph_obj.temporal_directed_edge_indices
+    #----------------------------------------
+    # Include reference frame
+    mesh_frame = geometry.TriangleMesh.create_coordinate_frame(
+                size=5, origin=[0, 0, 0])  # create coordinate frame
+    geometry_list += [mesh_frame]
+
+    #----------------------------------------
+    # Color Points/Nodes
+    point_sequence = add_pointcloud(mot_graph.graph_obj.x[:,:3],
+                                    color= None)
+    geometry_list += point_sequence
+
+    # Basic graph
+
+    # line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
+    #                                 edge_indices= edge_indices,
+    #                                 color = LIGHTGREY*0.1
+    #                                 )
+    # geometry_list += line_set_sequence
+
+    #----------------------------------------
+    # Active and inactive Edges
+    active_edges :torch.Tensor = mot_graph.graph_obj.temporal_directed_edge_preds
+    # active_edges :torch.Tensor = mot_graph.graph_obj.active_edges
+    # only_active_edges_indices =  temporal_directed_edge_indices[:,active_edges]
+    # line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
+    #                                 edge_indices= only_active_edges_indices,
+    #                                 color = BLUE
+    #                                 )
+    line_set_sequence = add_line_set_labeled(nodes = mot_graph.graph_obj.x[:,:3],
+                                    edge_indices = edge_indices,
+                                    edge_labels = active_edges,
+                                    true_color = BLUE * 0.5,
+                                    false_color = LIGHTGREY )
+    geometry_list += line_set_sequence
+
+    #----------------------------------------
+    # Get correct predictions
+    # active_edges:torch.Tensor = mot_graph.graph_obj.active_edges
+    # only_active_edges_indices =  edge_indices[:,active_edges]
+    # edge_labels_for_active_edges = mot_graph.graph_obj.edge_labels[active_edges]
+    # correct_predictions_edge_indices = only_active_edges_indices[:,edge_labels_for_active_edges >=1]
+
+    # line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
+    #                                 edge_indices= correct_predictions_edge_indices,
+    #                                 color = YELLOW
+    #                                 )
+    # geometry_list += line_set_sequence
+
+    return geometry_list
+
 def visualize_eval_graph(mot_graph:NuscenesMotGraph):
     geometry_list = []
     edge_indices = mot_graph.graph_obj.edge_index

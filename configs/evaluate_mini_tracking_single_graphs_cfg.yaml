@@ -47,6 +47,7 @@ gpu_settings:
 
 dataset_params:
   # Preprocessing ParamsL
+  filter_for_buildable_sample_frames: False
   load_valid_sequence_sample_list : False
   # If the above is true then specify the path to the pickle files
   # Must be absolutepath until now
@@ -64,6 +65,12 @@ dataset_params:
   # Only detections from these clases will be loaded for the graph
   # filterBoxes_categoryQuery: ['vehicle.car'] 
   filterBoxes_categoryQuery: ['vehicle.car'] 
+
+  # Detection Params:
+  use_gt_detections: True # If True loaded detections will equal the sample_annotations from the trainval-set 
+  # Path to 3D detections file used for val/test. Must be defined if use_gt_detections==True
+  # det_file_path: "/media/HDD2/Datasets/nuscenes_EagerMOT_detections/centerpoint_3Ddetections/val/infos_val_10sweeps_withvelo_filter_True.json"
+  det_file_path: #"/media/HDD2/Datasets/nuscenes_CBMOT_detections/resources/infos_val_10sweeps_withvelo_filter_True.json"
 
   # Graph Construction Parameters
   graph_construction_params:
