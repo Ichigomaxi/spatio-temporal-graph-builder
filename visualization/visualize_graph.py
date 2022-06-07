@@ -7,6 +7,7 @@ from torchmetrics import BLEUScore
 # sys.path.append("datasets")
 # import datasets.NuscenesDataset
 from datasets.NuscenesDataset import NuscenesDataset
+from datasets.mot_graph import Graph
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 
@@ -316,6 +317,90 @@ def visualize_basic_graph(mot_graph:NuscenesMotGraph):
     #----------------------------------------
 
     return geometry_list
+
+def visualize_graph_obj_without_GT(graph_obj:Graph):
+
+    geometry_list = []
+    #----------------------------------------
+    # Include reference frame
+    mesh_frame = geometry.TriangleMesh.create_coordinate_frame(
+                size=5, origin=[0, 0, 0])  # create coordinate frame
+    geometry_list += [mesh_frame]
+
+    #----------------------------------------
+    # Temporal Edges 
+    temporal_edges_mask = graph_obj.temporal_edges_mask
+    temporal_edges = graph_obj.edge_index.T[temporal_edges_mask].reshape(-1,2)
+    temporal_edges = temporal_edges.T
+    
+    line_set_sequence_temporal_connections = add_line_set(nodes= graph_obj.x[:,:3],
+                                    edge_indices= temporal_edges,
+                                    color = np.asarray([ 0, 0, 1]))
+                                    
+
+    geometry_list += line_set_sequence_temporal_connections
+    
+    #----------------------------------------
+    # Spatial Edges
+
+    spatial_edges_mask = ~ graph_obj.temporal_edges_mask
+    spatial_edges = graph_obj.edge_index.T[spatial_edges_mask].reshape(-1,2)
+    spatial_edges = spatial_edges.T
+
+    line_set_sequence_spatial_connections = add_line_set(nodes= graph_obj.x[:,:3],
+                                    edge_indices= spatial_edges,
+                                    color=np.asarray([ 0, 1, 0]))
+                                    
+                                    
+    geometry_list += line_set_sequence_spatial_connections
+
+    return geometry_list
+
+def visualize_graph_obj_without_GT_selected_edges(graph_obj:Graph, selected_edge_indices:torch.Tensor):
+
+    geometry_list = []
+    #----------------------------------------
+    # Include reference frame
+    mesh_frame = geometry.TriangleMesh.create_coordinate_frame(
+                size=5, origin=[0, 0, 0])  # create coordinate frame
+    geometry_list += [mesh_frame]
+
+    #----------------------------------------
+    # Selected Edges 
+    line_set_sequence_temporal_connections = add_line_set(nodes= graph_obj.x[:,:3],
+                                    edge_indices= selected_edge_indices,
+                                    color = RED)
+    geometry_list += line_set_sequence_temporal_connections
+    #----------------------------------------
+    # Spatial Edges
+    all_edge_indices:List[int] = graph_obj.edge_index.T.tolist()
+    selected_edges = selected_edge_indices.T.tolist()
+    selected_edges_intuples = []
+    for i in range(len(selected_edges)):
+        indices_tuple = tuple(selected_edges[i])
+        selected_edges_intuples.append(indices_tuple)
+
+    unselected_edges =[]
+    unselected_edges_mask = torch.zeros(len(all_edge_indices))
+    for i in range(len(all_edge_indices)):
+        if tuple(all_edge_indices[i]) not in selected_edges_intuples:
+            # indices_in_list :List[int] = all_edge_indices[i]
+            # unselected_edges.append(indices_in_list)
+            unselected_edges_mask[i] = 1
+        else:
+            unselected_edges_mask[i] = 0
+    
+    unselected_edges_mask :torch.Tensor = unselected_edges_mask > 0 
+    unselected_edges = graph_obj.edge_index[:,unselected_edges_mask]
+    # unselected_edges = unselected_edges.T
+    line_set_sequence_spatial_connections = add_line_set(nodes= graph_obj.x[:,:3],
+                                    edge_indices= unselected_edges,
+                                    color=GREY)    
+                                    
+    geometry_list += line_set_sequence_spatial_connections
+
+    return geometry_list
+
 def visualize_geometry_list(geometry_list:list):
     o3d.visualization.draw_geometries(geometry_list)
 
