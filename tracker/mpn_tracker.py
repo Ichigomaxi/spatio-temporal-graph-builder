@@ -20,7 +20,7 @@ from model.mpn import MOTMPNet
 from nuscenes.nuscenes import Box
 from utils import graph
 from utils.evaluation import (add_tracked_boxes_to_submission,
-                              assign_definitive_connections, assign_definitive_connections_new, assign_track_ids)
+                              assign_definitive_connections, assign_definitive_connections_new, assign_track_ids,assign_track_ids_new)
 from utils.nuscenes_helper_functions import (get_all_samples_from_scene,
                                              skip_sample_token)
 from visualization.visualize_graph import (visualize_eval_graph,
@@ -93,9 +93,10 @@ class NuscenesMPNTracker(MPNTracker):
         assign_definitive_connections_new(mot_graph, self.tracking_threshold)
         
         # Assign Tracks
-        tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id = assign_track_ids(mot_graph.graph_obj, 
-                    frames_per_graph = mot_graph.max_frame_dist, 
-                    nuscenes_handle = dataset.nuscenes_handle)
+        # tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id = assign_track_ids(mot_graph.graph_obj, 
+        #             frames_per_graph = mot_graph.max_frame_dist, 
+        #             nuscenes_handle = dataset.nuscenes_handle)
+        tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id = assign_track_ids_new(mot_graph)
         mot_graph.graph_obj.tracking_IDs = tracking_IDs
         mot_graph.graph_obj.tracking_confidence_by_node_id = tracking_confidence_by_node_id
         # if self.use_gt:

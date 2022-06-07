@@ -119,5 +119,4 @@ class GreedyProjector:
         assert scatter_add(round_preds, temporal_edge_index[0], dim_size=self.num_nodes).max() <= 1
 
         # return round_preds, constr_satisf_rate
-        # self.final_graph.edge_preds = round_preds
         self.final_graph.temporal_directed_edge_preds = round_preds
