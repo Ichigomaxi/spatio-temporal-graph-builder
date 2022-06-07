@@ -32,11 +32,7 @@ def compute_constr_satisfaction_rate(graph_obj: Graph, edges_out, undirected_edg
 
     """
     # Get tensors indicataing which nodes have incoming and outgoing flows (e.g. nodes in first frame have no in. flow)
-    edge_ixs = graph_obj.edge_index
-    # Adapt and isolate to temporal edges and edge predictions
-    temporal_edges_mask = graph_obj.temporal_edges_mask 
-    edge_ixs = graph_obj.edge_index[:,temporal_edges_mask[:,0]]
-    
+    edge_ixs = graph_obj.temporal_directed_edge_indices # Adapted and isolated to temporal edges and edge predictions
 
     if undirected_edges:
         sorted, _ = edge_ixs.t().sort(dim = 1)
@@ -75,10 +71,8 @@ class GreedyProjector:
         self.num_nodes = full_graph.graph_obj.num_nodes
         
     def project(self, threshold:float = 0.5):
-        round_preds = (self.final_graph.edge_preds > threshold).float()
-        temporal_edges_mask = self.final_graph.temporal_edges_mask
-        round_preds = round_preds[temporal_edges_mask[:,0]]
-        temporal_edge_index = self.final_graph.edge_index[:,temporal_edges_mask[:,0]]
+        round_preds = (self.final_graph.temporal_directed_edge_preds > threshold).float()
+        temporal_edge_index = self.final_graph.temporal_directed_edge_indices
 
         self.constr_satisf_rate, flow_in, flow_out = compute_constr_satisfaction_rate(graph_obj = self.final_graph,
                                                                                      edges_out = round_preds,
@@ -104,7 +98,7 @@ class GreedyProjector:
             node_name, viol_type = viol_constr
 
             # Determine the set of incoming / outgoing edges
-            mask = torch.zeros(self.num_nodes).bool()
+            mask = torch.zeros(self.num_nodes).bool().to(flow_in.device)
             mask[node_name.int()] = True
             if viol_type == 0:  # Flow in violation
                 mask = mask[temporal_edge_index[1]]
@@ -115,7 +109,7 @@ class GreedyProjector:
 
             # If the constraint is still violated, set to 1 the edge with highest score, and set the rest to 0
             if round_preds[flow_edges_ix].sum() > 1:
-                max_pred_ix = max(flow_edges_ix, key=lambda ix: self.final_graph.edge_preds[ix]*round_preds[ix]) # Multiply for round_preds so that if the edge has been set to 0
+                max_pred_ix = max(flow_edges_ix, key=lambda ix: self.final_graph.temporal_directed_edge_preds[ix]*round_preds[ix]) # Multiply for round_preds so that if the edge has been set to 0
                                                                                                                  # it can not be set back to 1
                 round_preds[mask] = 0
                 round_preds[max_pred_ix] = 1
@@ -126,4 +120,4 @@ class GreedyProjector:
 
         # return round_preds, constr_satisf_rate
         # self.final_graph.edge_preds = round_preds
-        return round_preds
+        self.final_graph.temporal_directed_edge_preds = round_preds

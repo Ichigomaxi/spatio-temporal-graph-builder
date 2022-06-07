@@ -36,7 +36,7 @@ from torch_scatter import scatter_add
 from zmq import device
 from tracker.projectors import GreedyProjector
 from utils.misc import load_pickle, save_pickle
-from utils.graph import to_undirected_graph
+from utils.graph import to_directed_temporal_graph
 from utils.nuscenes_helper_functions import (
     get_gt_sample_annotation_pose, transform_detections_lidar2world_frame)
 
@@ -103,12 +103,12 @@ def project_graph_model_output(mot_graph:NuscenesMotGraph, tracking_threshold:fl
         This is serves as inspiration for our own code
         Rounds MPN predictions either via Linear Programming or a greedy heuristic
         """
-        to_undirected_graph(mot_graph, attrs_to_update=('edge_preds', 'edge_labels'))
+        to_directed_temporal_graph(mot_graph, attrs_to_update=('edge_preds', 'edge_labels'))
         projector = GreedyProjector(mot_graph)
-        round_preds = projector.project(tracking_threshold)
-        # Describes only active and inactive temporal edges
-        # In refernce to temporal edge_index 
-        mot_graph.graph_obj.active_edges = round_preds
+        projector.project(tracking_threshold)
+        # Describes only active and inactive directed temporal edges
+        # In refernce to directed temporal edge_index 
+        mot_graph.graph_obj.active_edges = mot_graph.graph_obj.temporal_directed_edge_preds
         # mot_graph.graph_obj.tracking_confidence = tracking_confidence_list # torch.LongTensor
         # mot_graph.graph_obj.active_neighbors = active_neighbors # torch.IntTensor
 

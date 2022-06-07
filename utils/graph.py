@@ -9,6 +9,8 @@ import numpy as np
 import torch
 from torch_scatter import scatter_mean
 
+from datasets.nuscenes_mot_graph import NuscenesMotGraph
+
 
 def get_time_valid_conn_ixs(frame_num, max_frame_dist, return_undirected = True, use_cuda = False):
     """
@@ -180,7 +182,7 @@ def compute_edge_feats_dict(edge_ixs, det_df, fps, use_cuda):
     return edge_feats_dict
 
 
-def to_undirected_graph(mot_graph, attrs_to_update = ('edge_preds', 'edge_labels')):
+def to_directed_temporal_graph(mot_graph:NuscenesMotGraph, attrs_to_update = ('edge_preds', 'edge_labels')):
     """
     Given a MOTGraph object, it updates its Graph object to make its edges directed (instead of having each edge
     (i, j) appear twice (e.g. (i, j) and (j, i)) it only keeps (i, j) with i <j)
@@ -190,18 +192,34 @@ def to_undirected_graph(mot_graph, attrs_to_update = ('edge_preds', 'edge_labels
         mot_graph: MOTGraph object
         attrs_to_update: list/tuple of edge attribute names, that will be averaged over each pair of directed edges
     """
-
+    edge_indices = mot_graph.graph_obj.edge_index
+    temporal_edges_mask = mot_graph.graph_obj.temporal_edges_mask
+    temporal_edge_index = mot_graph.graph_obj.edge_index[:,temporal_edges_mask[:,0]]
+    # save attributes somewhere else
+    new_attr_name_to_update = []
+    for attr_name in attrs_to_update:
+        if hasattr(mot_graph.graph_obj, attr_name):
+            attribute = getattr(mot_graph.graph_obj, attr_name)
+            new_attr_name = "temporal_directed_" + attr_name
+            setattr(mot_graph.graph_obj,new_attr_name,attribute[temporal_edges_mask[:,0]])
+            new_attr_name_to_update.append(new_attr_name)
+            
+    
+    edge_indices = temporal_edge_index
     # Make edges undirected
-    sorted_edges, _ = torch.sort(mot_graph.graph_obj.edge_index, dim=0)
+    sorted_edges, _ = torch.sort(edge_indices, dim=0)
     undirected_edges, orig_indices = torch.unique(sorted_edges, return_inverse=True, dim=1)
     assert sorted_edges.shape[1] == 2 * undirected_edges.shape[1], "Some edges were not duplicated"
-    mot_graph.graph_obj.edge_index = undirected_edges
+    edge_indices = undirected_edges
+    mot_graph.graph_obj.temporal_directed_edge_indices = edge_indices
 
     # Average values between each pair of directed edges for all attributes in 'attrs_to_update'
-    for attr_name in attrs_to_update:
+    for attr_name in new_attr_name_to_update:
         if hasattr(mot_graph.graph_obj, attr_name):
             undirected_attr = scatter_mean(getattr(mot_graph.graph_obj, attr_name), orig_indices)
             setattr(mot_graph.graph_obj, attr_name, undirected_attr)
+
+    mot_graph.graph_obj.to(mot_graph.device)
 
 def to_lightweight_graph(mot_graph, attrs_to_del=('reid_emb_dists', 'x', 'edge_attr', 'edge_labels')):
     """
