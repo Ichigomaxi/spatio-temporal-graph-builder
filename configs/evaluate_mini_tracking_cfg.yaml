@@ -69,7 +69,7 @@ dataset_params:
   # Contains a list of nuscenes class labels.
   # Only detections from these clases will be loaded for the graph
   # filterBoxes_categoryQuery: ['vehicle.car'] 
-  filterBoxes_categoryQuery: ['vehicle.car'] #['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian', 'vehicle.trailer', 'vehicle.truck']
+  filterBoxes_categoryQuery: ['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian', 'vehicle.trailer', 'vehicle.truck'] #['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian', 'vehicle.trailer', 'vehicle.truck']
 
   # Graph Construction Parameters
   graph_construction_params:
@@ -102,5 +102,5 @@ eval_params:
   # Logging / Metrics reporting params
   tensorboard: True
   save_submission: True
-  use_gt: False
+  use_gt: True # Use GT labels as edge_predictions instead of infering them
   tracking_threshold: 0.5

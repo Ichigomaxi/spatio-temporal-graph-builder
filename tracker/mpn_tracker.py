@@ -20,7 +20,7 @@ from model.mpn import MOTMPNet
 from nuscenes.nuscenes import Box
 from utils import graph
 from utils.evaluation import (add_tracked_boxes_to_submission,
-                              assign_definitive_connections, assign_track_ids)
+                              assign_definitive_connections, assign_definitive_connections_new, assign_track_ids)
 from utils.nuscenes_helper_functions import (get_all_samples_from_scene,
                                              skip_sample_token)
 from visualization.visualize_graph import (visualize_eval_graph,
@@ -89,7 +89,8 @@ class NuscenesMPNTracker(MPNTracker):
 
         dataset:NuscenesMOTGraphDataset = self.dataset
         # Compute active connections
-        assign_definitive_connections(mot_graph, self.tracking_threshold)
+        # assign_definitive_connections(mot_graph, self.tracking_threshold)
+        assign_definitive_connections_new(mot_graph, self.tracking_threshold)
         
         # Assign Tracks
         tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id = assign_track_ids(mot_graph.graph_obj, 
@@ -330,6 +331,7 @@ class NuscenesMPNTracker(MPNTracker):
                 else:
                     # log potentially missed sample_tokens
                     sample_token = current_sample_token
+                    print("lost tracks")
                     for i in range(frames_per_graph):
                         potentially_missed_sample_token.update({sample_token})
                         sample_token = skip_sample_token(sample_token,0, dataset.nuscenes_handle)

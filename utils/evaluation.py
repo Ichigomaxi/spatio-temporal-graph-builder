@@ -34,8 +34,9 @@ from pytorch_lightning import Callback
 from torch.nn import functional
 from torch_scatter import scatter_add
 from zmq import device
-
+from tracker.projectors import GreedyProjector
 from utils.misc import load_pickle, save_pickle
+from utils.graph import to_undirected_graph
 from utils.nuscenes_helper_functions import (
     get_gt_sample_annotation_pose, transform_detections_lidar2world_frame)
 
@@ -93,6 +94,53 @@ def compute_nuscenes_3D_mot_metrics(
         print(metrics_summary)
     
     return metrics_summary
+
+
+def project_graph_model_output(mot_graph:NuscenesMotGraph, tracking_threshold:float):
+        """
+        Taken from https://github.com/dvl-tum/mot_neural_solver
+        Check out the corresponding Paper https://arxiv.org/abs/1912.07515
+        This is serves as inspiration for our own code
+        Rounds MPN predictions either via Linear Programming or a greedy heuristic
+        """
+        to_undirected_graph(mot_graph, attrs_to_update=('edge_preds', 'edge_labels'))
+        projector = GreedyProjector(mot_graph)
+        round_preds = projector.project(tracking_threshold)
+        # Describes only active and inactive temporal edges
+        # In refernce to temporal edge_index 
+        mot_graph.graph_obj.active_edges = round_preds
+        # mot_graph.graph_obj.tracking_confidence = tracking_confidence_list # torch.LongTensor
+        # mot_graph.graph_obj.active_neighbors = active_neighbors # torch.IntTensor
+
+        # mot_graph.graph_obj = mot_graph.graph_obj.numpy()
+        # mot_graph.constr_satisf_rate = projector.constr_satisf_rate
+
+def assign_ids_neural_solver(subseq_graph):
+        """
+        Taken from https://github.com/dvl-tum/mot_neural_solver
+        Check out the corresponding Paper https://arxiv.org/abs/1912.07515
+        This is serves as inspiration for our own code
+
+        Assigns pedestrian Ids to each detection in the sequence, by determining all connected components in the graph
+        """
+        # # Only keep the non-zero edges and Express the result as a CSR matrix so that it can be fed to 'connected_components')
+        # nonzero_mask = subseq_graph.graph_obj.edge_preds == 1
+        # nonzero_edge_index = subseq_graph.graph_obj.edge_index.T[nonzero_mask].T
+        # nonzero_edges = subseq_graph.graph_obj.edge_preds[nonzero_mask].astype(int)
+        # graph_shape = (subseq_graph.graph_obj.num_nodes, subseq_graph.graph_obj.num_nodes)
+        # csr_graph = csr_matrix((nonzero_edges, (tuple(nonzero_edge_index))), shape=graph_shape)
+
+        # # Get the connected Components:
+        # n_components, labels = connected_components(csgraph=csr_graph, directed=False, return_labels=True)
+        # assert len(labels) == subseq_graph.graph_df.shape[0], "Ped Ids Label format is wrong"
+
+        # # Each Connected Component is a Ped Id. Assign those values to our DataFrame:
+        # final_projected_output = subseq_graph.graph_df.copy()
+        # final_projected_output['ped_id'] = labels
+        # final_projected_output = final_projected_output[VIDEO_COLUMNS + ['conf', 'detection_id']].copy()
+
+        # return final_projected_output
+        pass
 
 def get_node_indices_from_timeframe_i(timeframe_numbers:torch.Tensor, timeframe:int, as_tuple:bool= False)-> torch.Tensor:
     '''
@@ -152,10 +200,10 @@ def filter_out_spatial_edges(incoming_edge_idx:torch.Tensor,
     #     incoming_edge_idx_without_spatial_connections = incoming_edge_idx
     # incoming_edges_without_spatial_connections = graph_obj.edge_index[:,incoming_edge_idx_without_spatial_connections] #
 
-    source_node_ids = incoming_edges_without_spatial_connections[0]
-    timeframe_number = graph_obj.timeframe_number
-    source_node_times = timeframe_number[source_node_ids]
-    target_node_time = timeframe_number[target_node_id]
+    source_node_ids:torch.Tensor = incoming_edges_without_spatial_connections[0]
+    timeframe_number:torch.Tensor = graph_obj.timeframe_number
+    source_node_times:torch.Tensor = timeframe_number[source_node_ids]
+    target_node_time :torch.Tensor = timeframe_number[target_node_id]
     
     if not len(incoming_edge_idx_without_spatial_connections) > 0:
         print("Found a node without any temporal connections! ")
@@ -163,8 +211,25 @@ def filter_out_spatial_edges(incoming_edge_idx:torch.Tensor,
     else:
         if (target_node_time == source_node_times).all() and len(source_node_times) > 0:
             print("not possible")
-        assert (target_node_time != source_node_times).all(), \
-            "target_node_time: {}\n source_node_times: {}".format(target_node_time,source_node_times)
+        if not (target_node_time != source_node_times).all():
+            print("not possible")
+            output_files_dir = '/media/HDD2/students/maximilian/spatio-temporal-gnn/tracker_errors' 
+            os.makedirs(output_files_dir, exist_ok=True) # Make sure dir exists
+            # Save in pickle format
+            pickle_file_path = osp.join(output_files_dir,"error_graph.pkl")
+            with open(pickle_file_path, 'wb') as f:
+                torch.save(graph_obj,f, pickle_protocol = 4)
+
+            pickle_file_path = osp.join(output_files_dir,"error_incoming_edges_tuple.pkl")
+            with open(pickle_file_path, 'wb') as f:
+                torch.save((incoming_edge_idx, incoming_edges_without_spatial_connections),f, pickle_protocol = 4)
+            print("handling inconsistency manually!")
+            incoming_edge_idx_without_spatial_connections = incoming_edge_idx_without_spatial_connections[(target_node_time != source_node_times).squeeze()]
+
+            source_node_ids:torch.Tensor = incoming_edges_without_spatial_connections[0]
+            source_node_times:torch.Tensor = timeframe_number[source_node_ids]
+            assert (target_node_time != source_node_times).all(), \
+                "target_node_time: {}\n source_node_times: {}".format(target_node_time,source_node_times)
     
     return incoming_edge_idx_without_spatial_connections
 
@@ -209,13 +274,21 @@ def filter_for_past_edges(incoming_edge_idx:torch.Tensor,
     
     assert test_tensor.all() == False, \
         'Future node as target node! Invalid!' + \
-            ' \Target node must be part of current timeframe/' + \
+            ' \Target node must be part of current timeframe' + \
                 ' must be the same for all incoming edges'
     edges_connecting_to_future_nodes_mask = rows.eq(future_node_idx.unsqueeze(dim=1)).sum(dim= 0) # integer Tensor I think
     edges_connecting_to_future_nodes_mask = edges_connecting_to_future_nodes_mask >= 1 # Make into torch.ByteTensor
     edges_connecting_to_past_nodes_mask = ~edges_connecting_to_future_nodes_mask
     past_edges = incoming_edge_idx[edges_connecting_to_past_nodes_mask]
     return past_edges
+
+def assign_definitive_connections_new(mot_graph:NuscenesMotGraph, tracking_threshold:float):
+    """
+    new methods of defining connections by adopting greedy rounding approach from 
+    """
+    project_graph_model_output(mot_graph, tracking_threshold)
+
+
 
 def assign_definitive_connections(mot_graph:NuscenesMotGraph, tracking_threshold:float):
     '''
@@ -262,6 +335,9 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph, tracking_threshold
         assert vector_list_scalars.size() == torch.Size([len(vector_list_scalars)]), "tensor is not one dimensional"
         comparison_matrix = vector_list_scalars.eq(vector_list_scalars.unsqueeze(dim=1))
         return comparison_matrix.fill_diagonal_(False)
+
+    def assing_single_active_edge_per_target_node_new():
+        pass
 
     def assing_single_active_edge_per_target_node():
         """
@@ -418,8 +494,10 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph, tracking_threshold
     ##########################################################################
     # Assign for every node an active edge except the first frames nodes
     # Start from the latest nodes and propagate reverse in time 
+
     active_connections, tracking_confidence_list, active_neighbors = \
             assing_single_active_edge_per_target_node()
+
     ##########################################################################    
     # Determine if any active source_node has more than 1 active edges assigned
     # to them from nodes from the same timeframe
@@ -553,6 +631,147 @@ def assign_definitive_connections(mot_graph:NuscenesMotGraph, tracking_threshold
     mot_graph.graph_obj.active_edges = active_connections >=1 # Make into torch.ByteTensor
     mot_graph.graph_obj.tracking_confidence = tracking_confidence_list # torch.LongTensor
     mot_graph.graph_obj.active_neighbors = active_neighbors # torch.IntTensor
+
+def assign_track_ids_new(graph_object:Graph, frames_per_graph:int, nuscenes_handle:NuScenes):
+    '''
+    assign track Ids if active_edges have been determined
+    
+    Returns:
+    tracking_IDs : torch tensor, shape(num_nodes)
+    tracking_ID_dict : Dict{} contains mapping from custom tracking Ids to the same number again.
+                            len(Dict.keys) = num_tracking_IDs
+                            later on it should be used to match with the official_tracking Ids (Instance Ids) 
+    '''
+    def init_new_tracks(selected_node_idx : torch.Tensor, 
+                        tracking_IDs : torch.IntTensor, 
+                        tracking_ID_dict: Dict[int, int]):
+        '''
+        give new track Ids to selected Nodes
+        '''
+        # Determine helping variables
+        device = graph_object.device()
+        common_tracking_dtype = tracking_IDs.dtype
+        # Generate new tracking Ids depending on number of untracked nodes
+        num_selected_nodes = selected_node_idx.shape[0]
+        last_id = max([key_tracking_id for key_tracking_id in tracking_ID_dict])
+        assert last_id == torch.max(tracking_IDs)
+        new_start = last_id + 1
+        new_tracking_IDs:torch.IntTensor = torch.arange(start= new_start, end= new_start + num_selected_nodes,
+                                step=1, dtype= common_tracking_dtype, device=device)
+        # assign new tracking ids to untracked nodes
+        tracking_IDs[selected_node_idx] = new_tracking_IDs
+        # Update dictionary
+        update_tracking_dict(new_tracking_IDs.tolist(), tracking_ID_dict)
+
+    def update_tracking_dict(new_tracking_ids :List[int],
+                                tracking_ID_dict: Dict[int, int]):
+        tracking_ID_dict.update({track_id : track_id for track_id in new_tracking_ids})
+
+    common_tracking_dtype = torch.int
+    device = graph_object.device()
+    tracking_IDs:torch.Tensor = torch.ones(graph_object.x.shape[0], dtype=common_tracking_dtype).to(device)
+    tracking_IDs =  tracking_IDs * UNTRACKED_ID
+
+    # tracking_confidence_by_node_id:torch.Tensor = torch.zeros(graph_object.x.shape[0],dtype=torch.float32).to(device)
+    tracking_confidence_by_node_id:torch.Tensor = torch.ones(graph_object.x.shape[0],dtype=torch.float32).to(device)
+    tracking_ID_dict: Dict[int, int]= {}
+
+    edge_indices = graph_object.edge_index
+
+    # Go forward frame by frame, start at first frame and stop at last frame 
+    for timeframe in range(frames_per_graph):
+        node_idx_from_frame_i = get_node_indices_from_timeframe_i(graph_object.timeframe_number, timeframe=timeframe, as_tuple=True)
+        node_idx_from_frame_i = node_idx_from_frame_i[0] # second colum is just zeros
+
+        # If first frame Assing new tracking Ids
+        if timeframe == 0:
+            num_initial_boxes = node_idx_from_frame_i.shape[0]
+            initial_tracking_IDs:torch.IntTensor = \
+                            torch.arange(start=0, end= num_initial_boxes,
+                            step=1, 
+                            dtype= common_tracking_dtype,
+                            device=device)
+            tracking_IDs[node_idx_from_frame_i] = initial_tracking_IDs
+
+            update_tracking_dict(initial_tracking_IDs.tolist(), tracking_ID_dict)
+        # For all remaining frames 
+        else:
+            # check for active edges
+            # Get active edge for edge selected node
+            # Get all incoming edges 
+            untracked_node_idx = []
+            for target_node_id in node_idx_from_frame_i:
+                
+                rows, columns = edge_indices[0],edge_indices[1] # COO-format
+                edge_mask:torch.Tensor = torch.eq(columns, target_node_id)
+                incoming_edge_idx_past_and_future = edge_mask.nonzero().squeeze()
+                temporal_incoming_edge_idx = filter_out_spatial_edges(incoming_edge_idx_past_and_future, graph_object)
+                if temporal_incoming_edge_idx.shape[0] == 0:
+                    # Found a node without temporal edges
+                    # it will be considered as a node without any active connections and therefore will be assigned a new trackId
+                    # continue with next node
+                    print("Found node without temporal edges!")
+                    
+                    assert graph_object.active_edges[temporal_incoming_edge_idx].any() == False
+                incoming_edge_idx_past = filter_for_past_edges(temporal_incoming_edge_idx, 
+                                                                timeframe, frames_per_graph, graph_object)
+
+                current_active_edges = graph_object.active_edges[incoming_edge_idx_past]
+
+                #### DEBUGGING ###########
+                timeframes:torch.Tensor = graph_object.timeframe_number
+                ###################
+
+                # check if active edge available
+                if current_active_edges.any():
+                    assert current_active_edges.sum(dim=0) == 1
+                    # active_edge_id_local = torch.argmax( torch.tensor(current_active_edges,dtype=torch.float32) )
+                    # active_edge_id = incoming_edge_idx_past_and_future[current_active_edges]
+                    active_edge_id = incoming_edge_idx_past[current_active_edges]
+                    # active_edge_id = incoming_edge_idx_past_and_future[active_edge_id_local]
+                    source_node_id =  rows[active_edge_id]
+
+                    #### DEBUGGING #######
+                    source_node_time = timeframes[source_node_id]
+                    target_node_time = timeframes[target_node_id]
+                    assert source_node_time != target_node_time
+                    ###################
+
+                    assert graph_object.active_neighbors[active_edge_id] == source_node_id
+                    # check if source node has an assigned track id
+                    if(tracking_IDs[source_node_id] == UNTRACKED_ID):
+                        print(tracking_IDs[source_node_id])
+                    assert tracking_IDs[source_node_id] != UNTRACKED_ID, \
+                                    "Source node was not given a track ID !!!\n" \
+                                    + " Tracking cannot be performed, either invalid active edge or invalid source_node_id!\n"\
+                                    + "tracking_IDs[source_node_id]: {} \n".format(tracking_IDs[source_node_id])\
+                                    +"Tracking_IDS: {} \n".format(tracking_IDs)
+                    # adopt track id
+                    tracking_IDs[target_node_id] = tracking_IDs[source_node_id]
+                    tracking_confidence_by_node_id[target_node_id] = graph_object.tracking_confidence[active_edge_id]
+                else: # add target_node_id to list of untracked nodes
+                    untracked_node_idx.append(target_node_id)
+
+            # Assign new track Ids to untracked nodes
+            # check if list contains elements
+            if untracked_node_idx:
+                untracked_node_idx = torch.stack(untracked_node_idx, dim=0)
+                init_new_tracks( untracked_node_idx, tracking_IDs, tracking_ID_dict)
+                # tracking confidence of newly tracked objects is implicitly 0.0
+
+        ######################################################################################################
+        # Check that all nodes from timeframe i have been assigned a trackID
+        if (tracking_IDs[node_idx_from_frame_i] == UNTRACKED_ID).any():
+            print(tracking_IDs[node_idx_from_frame_i])
+        assert (tracking_IDs[node_idx_from_frame_i] == UNTRACKED_ID).any() == False, \
+                    "Some node has not been assigned a tracking ID at timeframe {}\n".format(timeframe) \
+                    + "tracking_IDs[node_idx_from_frame_i] :{}\n".format(tracking_IDs[node_idx_from_frame_i])
+
+    # check if all nodes have been assigned a tracking id
+    assert torch.isnan(tracking_IDs).all() == False, "Not all nodes have been assigned a tracking Id"
+
+    return tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id
+
 
 #TrackID = InstanceID
 def assign_track_ids(graph_object:Graph, frames_per_graph:int, nuscenes_handle:NuScenes):
