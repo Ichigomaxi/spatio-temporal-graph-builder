@@ -241,6 +241,32 @@ class NuscenesMPNTracker(MPNTracker):
                                         ending_sample_token,
                                         use_gt)
 
+    def is_faulty_graph(self,current_mot_graph :NuscenesMotGraph):
+        #Check that graph does not contain any dummy boxes
+        if current_mot_graph.graph_obj.contains_dummies:
+            print("Found Faulty graph with dummy object in tracker!")
+            print("Add to unbuildable list !")
+            return True
+        # Check that graph edges are undirected
+        if current_mot_graph.graph_obj.is_directed():
+            print("Found Faulty graph with directed edges in tracker!")
+            print("Add to unbuildable list !")
+            return True
+        # Check that temporal edges are able to be directed
+        edge_indices = current_mot_graph.graph_obj.edge_index
+        temporal_edges_mask = current_mot_graph.graph_obj.temporal_edges_mask
+        temporal_edge_index = current_mot_graph.graph_obj.edge_index[:,temporal_edges_mask[:,0]]
+        edge_indices = temporal_edge_index
+        # Make edges undirected
+        sorted_edges, _ = torch.sort(edge_indices, dim=0)
+        undirected_edges, orig_indices = torch.unique(sorted_edges, return_inverse=True, dim=1)
+        if not (sorted_edges.shape[1] == 2 * undirected_edges.shape[1]):
+            print("Found Faulty graph with temporal edges that cannot be transformed to directed graph in tracker!")
+            print("Some edges were not duplicated")
+            return True
+
+        return False
+
     def track(self, scene_table:List[dict], submission: Dict[str, Dict[str, Any]]):
         """
         Main method. Given a sequence name, it tracks all detections and produces an output DataFrame, where each
@@ -275,13 +301,14 @@ class NuscenesMPNTracker(MPNTracker):
             current_sample_token = scene_table['last_sample_token']
             potentially_missed_sample_token = set(all_available_samples)
         #####
-
+        unbuildable_sample_tokens = []
         while (current_sample_token != scene_table['last_sample_token']):
             t = time()
             ##############################################################################
             # check if sample_token is indexed by dataset. 
             # If not then add empty list to the summmary and skip to next sample_token
-            if ( (scene_token,current_sample_token) not in dataset.seq_frame_ixs):
+            if ( (scene_token,current_sample_token) not in dataset.seq_frame_ixs 
+                    or current_sample_token in unbuildable_sample_tokens):
                 
                 # Get list of all sample_tokens from last possible graph for this scene
                 _, last_filtered_sample_token = filtered_list_scene_sample_tuple[-1]
@@ -299,10 +326,16 @@ class NuscenesMPNTracker(MPNTracker):
                 if (current_sample_token in all_available_samples[-frames_per_graph:]
                         and previous_mot_graph is not None
                         and current_sample_token == last_filtered_sample_tokens[1] 
-                        and current_sample_token != last_filtered_sample_tokens[-1]):
+                        and current_sample_token != last_filtered_sample_tokens[-1]
+                        and current_sample_token not in unbuildable_sample_tokens):
                     # if true we can concatenate it with the last available frame
                     
                     last_mot_graph = self._load_and_infere_mot_graph(scene_token , last_filtered_sample_token)
+
+                    if self.is_faulty_graph(last_mot_graph):
+                        unbuildable_sample_tokens.append(current_sample_token)
+                        continue
+
                     last_tracking_ID_dict = self._perform_tracking_for_mot_graph( last_mot_graph )
                     # Concatenate
                     #TODO
@@ -351,6 +384,10 @@ class NuscenesMPNTracker(MPNTracker):
                 
                 # Load the graph corresponding to the entire subsequence
                 current_mot_graph = self._load_and_infere_mot_graph(scene_token ,current_sample_token)
+
+                if self.is_faulty_graph(current_mot_graph):
+                    unbuildable_sample_tokens.append(current_sample_token)
+                    continue
 
                 current_tracking_ID_dict = self._perform_tracking_for_mot_graph(current_mot_graph)
 
@@ -429,4 +466,11 @@ class NuscenesMPNTracker(MPNTracker):
         if missing_samples:
             insert_empty_lists_for_selected_frame_tokens(submission, missing_samples)
 
+        if hasattr(dataset.unused_scene_sample_tokens_dict,"after_tracking"):
+            unknown_tokens:List[str] = dataset.unused_scene_sample_tokens_dict["after_tracking"]
+            unknown_tokens.extend(unbuildable_sample_tokens)
+            dataset.unused_scene_sample_tokens_dict["after_tracking"] = unknown_tokens
+        else:
+            dataset.unused_scene_sample_tokens_dict["unbuildable_after_tracking"] = unbuildable_sample_tokens
+            dataset.unused_scene_sample_tokens_dict["potentially_missed_after_tracking"] = list(potentially_missed_sample_token)
         

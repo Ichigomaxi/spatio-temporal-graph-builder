@@ -29,6 +29,7 @@ from utils.misc import save_pickle
 from utils.path_cfg import OUTPUT_PATH
 from visualization.visualize_graph import (visualize_eval_graph,
                                            visualize_geometry_list,visualize_output_graph, visualize_eval_graph_new)
+import ujson as json
 
 
 class MOTNeuralSolver(pl.LightningModule):
@@ -370,5 +371,14 @@ class MOTNeuralSolver(pl.LightningModule):
             os.makedirs(output_files_dir, exist_ok=True) # Make sure dir exists
             results_file = save_to_json_file(summary, folder_name= output_files_dir , 
                     version= self.hparams['test_dataset_mode'] )
-        
+
+        # log tokens that have potentially not been
+        if dataset.unused_scene_sample_tokens_dict:
+            os.makedirs(output_files_dir, exist_ok=True) # Make sure dir exists
+            version= self.hparams['test_dataset_mode'] 
+            potentially_untracked_token_path = os.path.join(output_files_dir, (version + "_unused_scene_sample_tokens_dict.json"))
+
+            with open(potentially_untracked_token_path, 'w') as f:
+                json.dump(dataset.unused_scene_sample_tokens_dict, f, indent=4)
+
         return summary, results_file

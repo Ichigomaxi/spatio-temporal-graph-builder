@@ -50,7 +50,13 @@ class NuscenesMOTGraphDataset(object):
         self.seq_frame_ixs:List[Tuple[str,str]] = []
         self.frames_to_detection_boxes = None
 
+        self.unused_scene_sample_tokens_dict = {}
+
         if self.seqs_to_retrieve:
+            # Load Detections from dections submission style file
+            if "use_gt_detections" in self.dataset_params \
+            and self.dataset_params["use_gt_detections"] == False:
+                self.frames_to_detection_boxes = self._load_external_detections()
 
             # Sequence the dataset
             # Index the dataset (i.e. assign a pair (scene, starting frame) to each integer from 0 to len(dataset) -1)
@@ -85,11 +91,9 @@ class NuscenesMOTGraphDataset(object):
                 print("Elapsed Loading time: {}".format(time_difference))
                 print("##########################################################")
             else:
-                self.seq_frame_ixs = self._index_dataset()
-            # Load Detections from dections submission style file
-            if "use_gt_detections" in self.dataset_params \
-            and self.dataset_params["use_gt_detections"] == False:
-                self.frames_to_detection_boxes = self._load_external_detections()
+                self.seq_frame_ixs, unused_scene_sample_tokens = self._index_dataset()
+                self.unused_scene_sample_tokens_dict["after_indexing_dataset"] = unused_scene_sample_tokens
+            
 
     def _get_seqs_to_retrieve_from_splits(self, splits:dict)-> List[dict]:
         """
@@ -102,22 +106,22 @@ class NuscenesMOTGraphDataset(object):
         """
         seqs_to_retrieve = None
         scene_names = []
+        # official nuscenes split
+        dict_splits_to_scene_names = self.nuscenes_dataset.splits_to_scene_names
+        split_name = self.mode
+        scene_names = dict_splits_to_scene_names[split_name]
+
         if splits is not None:
             # custom split
             # Get appropiate sequence names depending on mode
-            if 'train' in self.mode:
+            if 'train' in self.mode and hasattr(splits,'train') and getattr(splits,'train') is not None :
                 scene_names = splits['train']
-            elif 'val' in self.mode:
+            elif 'val' in self.mode and hasattr(splits,'val') and getattr(splits,'val') is not None :
                 scene_names = splits['val']
-            elif 'test' in self.mode:
+            elif 'test' in self.mode and hasattr(splits,'test') and getattr(splits,'test') is not None :
                 scene_names = splits['test']
-            print("Loading Custom selected scenes:", scene_names )
-        else:
-            # official nuscenes split
-            dict_splits_to_scene_names = self.nuscenes_dataset.splits_to_scene_names
-            split_name = self.mode
-            scene_names = dict_splits_to_scene_names[split_name]
-        
+            print("Loading Custom selected scenes:", scene_names)
+            
         # Dict containing all nuscene-scene-tables/dicts reachable by nuscenes_handle
         sequences_by_name = self.nuscenes_dataset.sequences_by_name
         # List respective nuscene-scene-tables/dicts corresponding to its split
@@ -161,9 +165,10 @@ class NuscenesMOTGraphDataset(object):
                     last_sample_token = scene['last_sample_token']
                     
         first_filter_end_time = time.time()
-        print('############################################################')
+        
         print('Finished to transform the detections into {}-frame\n {}-Datasplit'.format(sensor_channel,self.mode))
         print("Elapsed Time for transformation",first_filter_end_time - first_filter_start_time, "seconds")
+        print('############################################################')
 
         return filtered_frames_to_det_boxes_dict
 
@@ -221,13 +226,14 @@ class NuscenesMOTGraphDataset(object):
 
         #TODO
         # Filter if num_objects less than KNN -param or 1 
-        print("Filtering Process:\n Check if any Mot Graph are not buildable due to lack of detections")
-        start = time.time()
+       
+        unused_scene_sample_tokens = []
         # take on older configs which do not explicitly contain this new param
         if ("filter_for_buildable_sample_frames" not in self.dataset_params)\
             or ("filter_for_buildable_sample_frames" in self.dataset_params
             and self.dataset_params["filter_for_buildable_sample_frames"]):
-
+            start = time.time()
+            print("Filtering Process:\n Check if any Mot Graph are not buildable due to lack of detections")
             construction_possibility_checked = True # due to previous filtering
             filtered_sample_list_new = []
             for scene_sample_tuple in filtered_sample_list:
@@ -246,14 +252,16 @@ class NuscenesMOTGraphDataset(object):
         
                 if not mot_graph_analyzer.contains_dummy_objects():
                     filtered_sample_list_new.append(scene_sample_tuple)
+                else:
+                    unused_scene_sample_tokens.append(scene_sample_tuple)
             filtered_sample_list = filtered_sample_list_new
-        print("Finished Filtering:\n Now remaining mot graph samples should not contain any dummy boxes")
-        end = time.time()
-        print("Elapsed Time for filtering",end - start, "seconds")
-        print('---------------------------------------------')
+            print("Finished Filtering:\n Now remaining mot graph samples should not contain any dummy boxes")
+            end = time.time()
+            print("Elapsed Time for filtering",end - start, "seconds")
+            print('---------------------------------------------')
         
 
-        return filtered_sample_list
+        return filtered_sample_list, unused_scene_sample_tokens
 
     def get_filtered_samples_from_one_scene(self,searched_scene_token:str) -> List[Tuple[str,str]]:
         """

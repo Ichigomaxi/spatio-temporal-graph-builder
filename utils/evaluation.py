@@ -118,7 +118,7 @@ def project_graph_model_output(mot_graph:NuscenesMotGraph, tracking_threshold:fl
         # mot_graph.graph_obj = mot_graph.graph_obj.numpy()
         # mot_graph.constr_satisf_rate = projector.constr_satisf_rate
 
-def assign_ids_neural_solver(mot_graph):
+def assign_ids_neural_solver(mot_graph:NuscenesMotGraph) -> Tuple[int, np.ndarray]:
         """
         Taken from https://github.com/dvl-tum/mot_neural_solver
         Check out the corresponding Paper https://arxiv.org/abs/1912.07515
@@ -127,22 +127,18 @@ def assign_ids_neural_solver(mot_graph):
         Assigns pedestrian Ids to each detection in the sequence, by determining all connected components in the graph
         """
         # Only keep the non-zero edges and Express the result as a CSR matrix so that it can be fed to 'connected_components')
-        nonzero_mask = mot_graph.graph_obj.temporal_directed_edge_preds == 1
-        nonzero_edge_index = mot_graph.graph_obj.temporal_directed_edge_indices.T[nonzero_mask].T
-        nonzero_edges = mot_graph.graph_obj.temporal_directed_edge_preds[nonzero_mask].astype(int)
+        nonzero_mask:torch.Tensor = mot_graph.graph_obj.temporal_directed_edge_preds == 1
+        nonzero_edge_index:torch.Tensor = mot_graph.graph_obj.temporal_directed_edge_indices.T[nonzero_mask].T
+        # nonzero_edges = mot_graph.graph_obj.temporal_directed_edge_preds[nonzero_mask].astype(int)
+        nonzero_edges:torch.Tensor = mot_graph.graph_obj.temporal_directed_edge_preds[nonzero_mask].int()
         graph_shape = (mot_graph.graph_obj.num_nodes, mot_graph.graph_obj.num_nodes)
-        csr_graph = csr_matrix((nonzero_edges, (tuple(nonzero_edge_index))), shape=graph_shape)
+        csr_graph = csr_matrix((nonzero_edges.cpu().numpy(), (tuple(nonzero_edge_index.cpu().numpy()))), shape=graph_shape)
 
         # Get the connected Components:
         n_components, labels = connected_components(csgraph=csr_graph, directed=False, return_labels=True)
-        assert len(labels) == mot_graph.graph_df.shape[0], "Ped Ids Label format is wrong"
+        assert len(labels) == mot_graph.graph_obj.num_nodes, "Ped Ids Label format is wrong"
 
-        # Each Connected Component is a Ped Id. Assign those values to our DataFrame:
-        final_projected_output = mot_graph.graph_df.copy()
-        final_projected_output['ped_id'] = labels
-        # final_projected_output = final_projected_output[VIDEO_COLUMNS + ['conf', 'detection_id']].copy()
-
-        return final_projected_output
+        return n_components, labels
 
 def get_node_indices_from_timeframe_i(timeframe_numbers:torch.Tensor, timeframe:int, as_tuple:bool= False)-> torch.Tensor:
     '''
@@ -644,12 +640,15 @@ def assign_track_ids_new(mot_graph:NuscenesMotGraph):
                             len(Dict.keys) = num_tracking_IDs
                             later on it should be used to match with the official_tracking Ids (Instance Ids) 
     '''
-    final_projected_output = assign_ids_neural_solver(mot_graph)
-    tracking_IDs = final_projected_output['ped_id']
-    tracking_IDs = {tracking_ID : tracking_ID for tracking_ID in tracking_IDs}
-    tracking_confidence_by_node_id = torch.ones(len(tracking_IDs))
+    n_components, labels = assign_ids_neural_solver(mot_graph)
+    assert np.max(labels) == (n_components - 1)
     
-    return tracking_IDs, tracking_IDs, tracking_confidence_by_node_id
+    tracking_IDs = torch.tensor(labels).to(mot_graph.device)
+    tracking_ID_dict = {local_track_id : local_track_id for local_track_id in range(n_components)}
+    # dummy parameter for now
+    tracking_confidence_by_node_id = torch.ones(len(tracking_IDs)).to(mot_graph.device)
+    
+    return tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id
 
 #TrackID = InstanceID
 def assign_track_ids(graph_object:Graph, frames_per_graph:int, nuscenes_handle:NuScenes):
@@ -884,6 +883,10 @@ def add_tracked_boxes_to_submission(submission: Dict[str, Dict[str, Any]],
     for node_id in selected_node_idx:
         box:Box = mot_graph.graph_dataframe["boxes_list_all"][node_id]
         
+        ## Check for DummyBoxes
+        if box.token == NuscenesMotGraph.DUMMY_TOKEN:
+            print("Found Dummy object in Submission")
+            continue
         # transformed_box = box.copy()
         # transformed_box.rotate()
 

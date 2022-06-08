@@ -63,7 +63,8 @@ def main(_config, _run):
     # test_dataset = model.test_dataset()
 
     test_dataset = NuscenesMOTGraphDataset(_config['dataset_params'],
-                                            mode = _config['test_dataset_mode'], 
+                                            mode = _config['test_dataset_mode'],
+                                            splits= _config['data_splits'],
                                             device=_config['gpu_settings']['torch_device'])
 
     submission_summary, result_path_ = model.track_all_seqs(dataset = test_dataset,

@@ -647,9 +647,10 @@ class NuscenesMotGraph(object):
         # Ensure that graph is undirected.
         if self.graph_obj.is_directed():
             print('Before:\n{}'.format(self.graph_obj))
-            undirectTransfomer = ToUndirected()
-            self.graph_obj = undirectTransfomer(self.graph_obj)
+            # undirectTransfomer = ToUndirected()
+            # self.graph_obj = undirectTransfomer(self.graph_obj)
             print('After:\n{}'.format(self.graph_obj))
+            # self.graph_obj.contains_dummies = (torch.tensor(1) > 0)
         
         self.graph_obj.to(self.device)
 
