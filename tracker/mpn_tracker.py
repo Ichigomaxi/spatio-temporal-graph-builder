@@ -466,11 +466,17 @@ class NuscenesMPNTracker(MPNTracker):
         if missing_samples:
             insert_empty_lists_for_selected_frame_tokens(submission, missing_samples)
 
-        if hasattr(dataset.unused_scene_sample_tokens_dict,"after_tracking"):
+        if "after_tracking" in dataset.unused_scene_sample_tokens_dict:
             unknown_tokens:List[str] = dataset.unused_scene_sample_tokens_dict["after_tracking"]
             unknown_tokens.extend(unbuildable_sample_tokens)
             dataset.unused_scene_sample_tokens_dict["after_tracking"] = unknown_tokens
         else:
             dataset.unused_scene_sample_tokens_dict["unbuildable_after_tracking"] = unbuildable_sample_tokens
+
+        if "potentially_missed_after_tracking" in dataset.unused_scene_sample_tokens_dict:
+            unknown_tokens:List[str] = dataset.unused_scene_sample_tokens_dict["potentially_missed_after_tracking"]
+            unknown_tokens.extend(list(potentially_missed_sample_token))
+            dataset.unused_scene_sample_tokens_dict["potentially_missed_after_tracking"] = unknown_tokens
+        else:
             dataset.unused_scene_sample_tokens_dict["potentially_missed_after_tracking"] = list(potentially_missed_sample_token)
         
