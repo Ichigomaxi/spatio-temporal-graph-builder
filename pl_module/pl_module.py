@@ -23,12 +23,12 @@ from torch.nn import functional as F
 from torch.optim import lr_scheduler as lr_sched_module
 from torch_geometric.data import DataLoader
 from tracker.mpn_tracker import NuscenesMPNTracker
-from utils.evaluation import (assign_definitive_connections,assign_definitive_connections_new, assign_track_ids,
+from utils.evaluation import (assign_definitive_connections,assign_definitive_connections_new, assign_track_ids,assign_track_ids_new,
                               add_tracked_boxes_to_submission, prepare_for_submission)
 from utils.misc import save_pickle
 from utils.path_cfg import OUTPUT_PATH
 from visualization.visualize_graph import (visualize_eval_graph,
-                                           visualize_geometry_list,visualize_output_graph, visualize_eval_graph_new)
+                                           visualize_geometry_list,visualize_output_graph, visualize_eval_graph_new, visualize_output_graph_new)
 import ujson as json
 
 
@@ -283,13 +283,14 @@ class MOTNeuralSolver(pl.LightningModule):
             assign_definitive_connections_new(mot_graph, tracking_threshold)
 
             # # Assign Tracks
+            tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id = assign_track_ids_new(mot_graph)
             # tracking_IDs, tracking_ID_dict, tracking_confidence_by_node_id = assign_track_ids(mot_graph.graph_obj, 
             #             frames_per_graph = mot_graph.max_frame_dist, 
             #             nuscenes_handle = dataset.nuscenes_handle)
-            # mot_graph.graph_obj.tracking_IDs = tracking_IDs
-            # mot_graph.graph_obj.tracking_confidence_by_node_id = tracking_confidence_by_node_id
-            # if use_gt:  # For debugging purposes and obtaining oracle results
-            #     mot_graph.graph_obj.tracking_confidence_by_node_id = torch.ones_like(tracking_confidence_by_node_id)
+            mot_graph.graph_obj.tracking_IDs = tracking_IDs
+            mot_graph.graph_obj.tracking_confidence_by_node_id = tracking_confidence_by_node_id
+            if use_gt:  # For debugging purposes and obtaining oracle results
+                mot_graph.graph_obj.tracking_confidence_by_node_id = torch.ones_like(tracking_confidence_by_node_id)
             
             # # Prepare submission dict
             summary = {}
@@ -298,11 +299,13 @@ class MOTNeuralSolver(pl.LightningModule):
             # summary = add_tracked_boxes_to_submission(summary, mot_graph = mot_graph,use_gt=use_gt)
             
             if(self.hparams['eval_params']['visualize_graph']):
-                geometry_list = visualize_eval_graph_new(mot_graph)
+                
+                # geometry_list = visualize_eval_graph_new(mot_graph)
                 # geometry_list = visualize_eval_graph(mot_graph)
                 visualize_geometry_list(geometry_list)
                 if self.hparams['dataset_params']['use_gt_detections']:
-                    geometry_list = visualize_output_graph(mot_graph)
+                    geometry_list = visualize_output_graph_new(mot_graph)
+                    # geometry_list = visualize_output_graph(mot_graph)
                     visualize_geometry_list(geometry_list)
             
             inferred_mot_graphs.append(mot_graph)

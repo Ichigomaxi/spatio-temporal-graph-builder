@@ -644,7 +644,7 @@ def assign_track_ids_new(mot_graph:NuscenesMotGraph):
     assert np.max(labels) == (n_components - 1)
     
     tracking_IDs = torch.tensor(labels).to(mot_graph.device)
-    tracking_ID_dict = {local_track_id : local_track_id for local_track_id in range(n_components)}
+    tracking_ID_dict :Dict[int,int] = {local_track_id : local_track_id for local_track_id in range(n_components)}
     # dummy parameter for now
     tracking_confidence_by_node_id = torch.ones(len(tracking_IDs)).to(mot_graph.device)
     

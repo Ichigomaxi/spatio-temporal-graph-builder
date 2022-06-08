@@ -22,29 +22,6 @@ gpu_settings:
   # device_id: [1] # Specifically takes the gpu associated with cuda:1 
   torch_device: 'cpu'
 
-# train_params:
-#   batch_size: 4
-#   num_epochs: 200
-#   optimizer:
-#     type: Adam
-#     args:
-#       lr: 0.0001
-#       weight_decay: 0.001
-
-#   lr_scheduler:
-#     type:
-#     args:
-#       step_size: 7
-#       gamma: 0.5
-
-#   num_workers: 0 # Used for dataloaders
-#   save_every_epoch: True # Determines if every a checkpoint will be saved for every epoch
-#   save_epoch_start: 1 # If the arg above is set to True, determines the first epoch after which we start saving ckpts
-#   tensorboard: True
-#   num_save_top_k: 2
-#   include_custom_checkpointing : True
-#   include_early_stopping : True
-
 dataset_params:
   # Preprocessing ParamsL
   filter_for_buildable_sample_frames: False
@@ -67,19 +44,19 @@ dataset_params:
   filterBoxes_categoryQuery: ['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian', 'vehicle.trailer', 'vehicle.truck']
 
   # Detection Params:
-  use_gt_detections: False # If True loaded detections will equal the sample_annotations from the trainval-set 
+  use_gt_detections: True # If True loaded detections will equal the sample_annotations from the trainval-set 
   # Path to 3D detections file used for val/test. Must be defined if use_gt_detections==True
   # det_file_path: "/media/HDD2/Datasets/nuscenes_EagerMOT_detections/centerpoint_3Ddetections/val/infos_val_10sweeps_withvelo_filter_True.json"
   det_file_path: 'C:\Users\maxil\Documents\projects\master_thesis\centerpoint_detections\infos_val_10sweeps_withvelo_filter_True_CBMOT.json'
 
   # Graph Construction Parameters
   graph_construction_params:
-    spatial_knn_num_neighbors: 4
-    temporal_knn_num_neighbors : 4
+    spatial_knn_num_neighbors: 3
+    temporal_knn_num_neighbors : 3
     spatial_shift_timeframes : 20
     max_temporal_edge_length : 2 #Can be maximium of (max_frame_dist-1)
     
-  max_frame_dist: 5 # Maximum number of frames contained in each graph sampled graph
+  max_frame_dist: 6 # Maximum number of frames contained in each graph sampled graph
   # Node Features
   node_feature_mode : "centers_and_time" # determines the included node features 
   # Edge Features

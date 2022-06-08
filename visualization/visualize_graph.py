@@ -154,7 +154,7 @@ def visualize_input_graph(mot_graph:NuscenesMotGraph):
 
     nodes_3d_coord = mot_graph.graph_obj.x[:,:3]
     edge_indices= mot_graph.graph_obj.edge_index
-    edge_labels= mot_graph.graph_obj.edge_labels
+    # edge_labels= mot_graph.graph_obj.edge_labels
     edge_features = mot_graph.graph_obj.edge_attr
 
     # Color Points/Nodes
@@ -192,42 +192,17 @@ def visualize_eval_graph_new(mot_graph:NuscenesMotGraph):
                                     color= None)
     geometry_list += point_sequence
 
-    # Basic graph
-
-    # line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
-    #                                 edge_indices= edge_indices,
-    #                                 color = LIGHTGREY*0.1
-    #                                 )
-    # geometry_list += line_set_sequence
-
     #----------------------------------------
     # Active and inactive Edges
     active_edges :torch.Tensor = mot_graph.graph_obj.temporal_directed_edge_preds
     # active_edges :torch.Tensor = mot_graph.graph_obj.active_edges
     # only_active_edges_indices =  temporal_directed_edge_indices[:,active_edges]
-    # line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
-    #                                 edge_indices= only_active_edges_indices,
-    #                                 color = BLUE
-    #                                 )
     line_set_sequence = add_line_set_labeled(nodes = mot_graph.graph_obj.x[:,:3],
                                     edge_indices = edge_indices,
                                     edge_labels = active_edges,
                                     true_color = BLUE * 0.5,
                                     false_color = LIGHTGREY )
     geometry_list += line_set_sequence
-
-    #----------------------------------------
-    # Get correct predictions
-    # active_edges:torch.Tensor = mot_graph.graph_obj.active_edges
-    # only_active_edges_indices =  edge_indices[:,active_edges]
-    # edge_labels_for_active_edges = mot_graph.graph_obj.edge_labels[active_edges]
-    # correct_predictions_edge_indices = only_active_edges_indices[:,edge_labels_for_active_edges >=1]
-
-    # line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
-    #                                 edge_indices= correct_predictions_edge_indices,
-    #                                 color = YELLOW
-    #                                 )
-    # geometry_list += line_set_sequence
 
     return geometry_list
 
@@ -292,6 +267,93 @@ def visualize_eval_graph(mot_graph:NuscenesMotGraph):
     #                                 false_color=LIGHTGREY )
 
     # geometry_list += line_set_sequence
+    #----------------------------------------
+
+    return geometry_list
+
+def visualize_output_graph_new(mot_graph:NuscenesMotGraph):
+    geometry_list = []
+
+    #----------------------------------------
+    # Include reference frame
+    mesh_frame = geometry.TriangleMesh.create_coordinate_frame(
+                size=5, origin=[0, 0, 0])  # create coordinate frame
+    geometry_list += [mesh_frame]
+
+    #----------------------------------------
+    # Color Points/Nodes
+    point_sequence = add_pointcloud(mot_graph.graph_obj.x[:,:3],
+                                    color= None)
+    geometry_list += point_sequence
+    #----------------------------------------
+    # Get all correct edge predictions aka True positive
+    # prediction=1 and label =1
+    temporal_directed_edge_indices :torch.Tensor = mot_graph.graph_obj.temporal_directed_edge_indices
+    temporal_directed_positive_active_edges_mask :torch.BoolTensor = mot_graph.graph_obj.temporal_directed_edge_preds > 0
+    temporal_directed_edge_labels :torch.Tensor = mot_graph.graph_obj.temporal_directed_edge_labels
+    # Get set of positive active edges
+    edge_indices_for_positive_active_edges = temporal_directed_edge_indices[:,temporal_directed_positive_active_edges_mask]
+    # GEt set of corresponding labels
+    labels_corresponding_to_positive_active_edges = temporal_directed_edge_labels[temporal_directed_positive_active_edges_mask]
+    # Get set of correctly assigned active edges
+    true_positive_predictions_edge_indices =edge_indices_for_positive_active_edges[:, labels_corresponding_to_positive_active_edges > 0] 
+
+    line_set_sequence = add_line_set(
+                    nodes= mot_graph.graph_obj.x[:,:3],
+                    edge_indices= true_positive_predictions_edge_indices, 
+                    color= GREEN)
+    geometry_list += line_set_sequence
+    
+    #----------------------------------------
+    # Get all incorrect positive edge predictions aka False Positives
+    # prediction=1 but label =0 
+    false_positive_predictions_edge_indices = edge_indices_for_positive_active_edges[:, labels_corresponding_to_positive_active_edges <= 0] 
+    line_set_sequence = add_line_set(
+                    nodes= mot_graph.graph_obj.x[:,:3],
+                    edge_indices= false_positive_predictions_edge_indices, 
+                    color= RED)
+    geometry_list += line_set_sequence
+    #----------------------------------------
+    # Get the False Negatives aka prediction= 0 but label=1
+    temporal_directed_negative_active_edges_mask :torch.BoolTensor = mot_graph.graph_obj.temporal_directed_edge_preds <= 0
+     # Get set of negative active edges
+    edge_indices_for_negative_active_edges = temporal_directed_edge_indices[:,temporal_directed_negative_active_edges_mask]
+    # GEt set of corresponding labels
+    labels_corresponding_to_negative_active_edges = temporal_directed_edge_labels[temporal_directed_negative_active_edges_mask]
+    # Get set of edge_indices for False Negative prediction 
+    false_negative_predictions_edge_indices = edge_indices_for_negative_active_edges[:, labels_corresponding_to_negative_active_edges > 0]
+
+    line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
+                    edge_indices= false_negative_predictions_edge_indices, 
+                    color= BLUE)
+
+    geometry_list += line_set_sequence
+    #----------------------------------------
+    # Get the True Negatives aka prediction= 0 but label=0
+    # Get set of edge_indices for True Negative prediction 
+    true_negative_predictions_edge_indices = edge_indices_for_negative_active_edges[ :, labels_corresponding_to_negative_active_edges <= 0]
+    line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
+                    edge_indices= true_negative_predictions_edge_indices,
+                    color= GREY)
+
+    geometry_list += line_set_sequence
+
+    assert len(mot_graph.graph_obj.temporal_directed_edge_indices.T) == \
+        len(true_positive_predictions_edge_indices.T) + \
+        len(false_positive_predictions_edge_indices.T) + \
+        len(false_negative_predictions_edge_indices.T) + \
+        len(true_negative_predictions_edge_indices.T)
+
+
+    #----------------------------------------
+    # Spatial Edges
+    temporal_edges_mask = mot_graph.graph_obj.temporal_edges_mask
+    spatial_edges_mask = ~temporal_edges_mask
+    spatial_edge_indices_undirected = mot_graph.graph_obj.edge_index[:,spatial_edges_mask[:,0] ]
+
+    line_set_sequence = add_line_set(nodes= mot_graph.graph_obj.x[:,:3],
+                    edge_indices= spatial_edge_indices_undirected , color= GREY)
+    geometry_list += line_set_sequence
     #----------------------------------------
 
     return geometry_list
