@@ -1,4 +1,4 @@
-from typing import List
+from typing import Any, List
 import numpy as np
 import torch
 import sys
@@ -10,6 +10,10 @@ from datasets.NuscenesDataset import NuscenesDataset
 from datasets.mot_graph import Graph
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
+from nuscenes.utils.data_classes import LidarPointCloud
+from nuscenes.nuscenes import NuScenes,Box
+from utils.nuscenes_helper_functions import get_sample_data_table,get_lidar_pointlcoud_path
+from pyquaternion import Quaternion
 
 import open3d as o3d
 from open3d import geometry
@@ -121,40 +125,134 @@ def add_line_set_labeled(nodes:torch.Tensor, edge_indices: torch.Tensor,edge_lab
 
     return line_set_sequences
 
-# def build_geometries_input_graph_w_pointcloud(mot_graph:NuscenesMotGraph):
-#     geometry_list = []
+def add_bounding_boxes(boxes:List[Box], bbox_color:np.ndarray = GREEN, offset:int = 0):
+    """
+    Only for nuscenes detections with respect to LIDAR_TOP frame
+    """
+    line_set_bounding_boxes= []
 
-#     nodes_3d_coord = mot_graph.graph_obj.x[:,:3]
-#     edge_indices= mot_graph.graph_obj.edge_index
-#     edge_labels= mot_graph.graph_obj.edge_labels
-#     edge_features = mot_graph.graph_obj.edge_attr
+    for box in boxes:
+        center:np.ndarray = box.center
+        dim:np.ndarray = box.wlh
+        orientation:Quaternion = box.orientation
+        rotation_matrix_respect_2_LIDAR = orientation.rotation_matrix
+        # center_o3d = o3d.utility.Vector3dVector(center)
+        # rotation_matrix_respect_2_LIDAR_o3d = o3d.utility.Matrix3dVector(rotation_matrix_respect_2_LIDAR)
+        # dim_o3d = o3d.utility.Vector3dVector(dim)
+        # box3d = o3d.geometry.OrientedBoundingBox(center_o3d, 
+        #         rotation_matrix_respect_2_LIDAR_o3d, 
+        #         dim_o3d)
+        box3d = o3d.geometry.OrientedBoundingBox(center, 
+                rotation_matrix_respect_2_LIDAR, 
+                dim)
 
-#     # Color Points/Nodes
-#     point_sequence = add_pointcloud(nodes_3d_coord,
-#                                     color= None)
-#     geometry_list += point_sequence
+        line_set_bounding_box = o3d.geometry.LineSet.create_from_oriented_bounding_box(box3d)
+        line_set_bounding_box.paint_uniform_color(bbox_color)
+        line_set_bounding_box.translate(np.array([0,0,offset]))
+        # Rotate by 90 degrees in z- axis
+        rot_axis = 2 # Z-axis
+        yaw = np.zeros(3)
+        yaw[rot_axis] = np.pi*0.5
+        rot_mat = geometry.get_rotation_matrix_from_xyz(yaw)
+        line_set_bounding_box.rotate(rot_mat)
+        # Append to list
+        line_set_bounding_boxes.append(line_set_bounding_box)
     
-#     assert mot_graph.label_type is not None
+    return line_set_bounding_boxes
 
-#     if mot_graph.label_type == "binary":
-#         edge_type_numbers = edge_features.argmax(dim = 1)
-#         input_lineset = add_line_set_labeled(nodes = nodes_3d_coord,
-#                             edge_indices= edge_indices, 
-#                             edge_labels= edge_type_numbers
-#                             )
-#     geometry_list += input_lineset
-#     # Draw Graph/Edges with Lineset
-#     # Spatial Edges Red Edges
+def add_nuscenes_pointcloud(pointcloud_path:str, point_color:np.ndarray = GREY, offset:int = 0):
+    #Load Pointclouds from Nuscenes
+    pointcloud_nusc:LidarPointCloud = LidarPointCloud.from_file(pointcloud_path)
+    # Transpose Points
+    pointcloud_nusc_transposed = np.transpose(pointcloud_nusc.points)
+    # Init Open3D pointcloud object
+    pointcloud_o3d = o3d.geometry.PointCloud()
+    pointcloud_o3d.points = o3d.utility.Vector3dVector(pointcloud_nusc_transposed[:, :3])
+    # Translate Pointcloud by given offset in z direction
+    pointcloud_o3d.translate(np.array([0,0,offset]))
+    #Add chosen color
+    point_color= point_color
+    points_colors = np.tile(np.array(point_color), (pointcloud_nusc_transposed.shape[0], 1))
+    pointcloud_o3d.colors = o3d.utility.Vector3dVector(points_colors)
+
+    return [pointcloud_o3d]
+
+def build_geometries_input_graph_w_pointcloud_w_Bboxes(mot_graph:NuscenesMotGraph, nuscenes_handle: NuScenes):
+    geometry_list = []
+
+    geometry_list.extend(
+        build_geometries_input_graph_w_pointcloud(mot_graph, nuscenes_handle)
+    )
+
+    offset = mot_graph.SPATIAL_SHIFT_TIMEFRAMES
+    for i in range(mot_graph.max_frame_dist):
+        boxes = mot_graph.graph_dataframe["boxes_dict"][i]
+        line_set_bounding_boxes:List[Any] = \
+            add_bounding_boxes(boxes, bbox_color=GREEN, offset=offset*i)
+        geometry_list.extend(line_set_bounding_boxes)
+
+    return geometry_list
+
+def build_geometries_input_graph_w_pointcloud(mot_graph:NuscenesMotGraph, nuscenes_handle: NuScenes):
+    geometry_list = []
+
+    geometry_list_graph = visualize_input_graph_new(mot_graph)
+    geometry_list.extend(geometry_list_graph)
+
+    # Read in paths to pointcloud files
+    lidar_pcl_path_list = []
+    for i in range(mot_graph.max_frame_dist):
+        sample_token = mot_graph.graph_dataframe["available_sample_tokens"][i]
+        lidar_pcl_path = get_lidar_pointlcoud_path(sample_token, nuscenes_handle)
+        lidar_pcl_path_list.append(lidar_pcl_path)
+
+    offset = mot_graph.SPATIAL_SHIFT_TIMEFRAMES
+    for i, lidar_path in enumerate(lidar_pcl_path_list):
+        geometry_list.extend(add_nuscenes_pointcloud(lidar_path, GREY, offset * i))
+
+    return geometry_list
+
+def visualize_input_graph_new(mot_graph:NuscenesMotGraph, 
+                    spatial_edge_color:np.ndarray = RED,
+                    temporal_edge_color:np.ndarray = BLUE):
+    geometry_list = []
+
     
+    nodes_3d_coord = mot_graph.graph_obj.x[:,:3]
+    edge_indices= mot_graph.graph_obj.edge_index
+    #----------------------------------------
+    # Include reference frame
+    mesh_frame = geometry.TriangleMesh.create_coordinate_frame(
+                size=5, origin=[0, 0, 0])  # create coordinate frame
+    geometry_list += [mesh_frame]
 
-#     return geometry_list
+    #----------------------------------------
+    # temporal Edges
+    temporal_edges_mask = mot_graph.graph_obj.temporal_edges_mask
+    temporal_edge_indices_undirected = edge_indices[:,temporal_edges_mask[:,0] ]
+
+    line_set_sequence = add_line_set(
+                        nodes= nodes_3d_coord,
+                        edge_indices= temporal_edge_indices_undirected, 
+                        color= temporal_edge_color)
+    geometry_list += line_set_sequence
+    #----------------------------------------
+    # Spatial Edges
+    spatial_edges_mask = ~temporal_edges_mask
+    spatial_edge_indices_undirected = edge_indices[:,spatial_edges_mask[:,0]]
+    line_set_sequence = add_line_set(
+                        nodes= nodes_3d_coord,
+                        edge_indices= spatial_edge_indices_undirected, 
+                        color= spatial_edge_color)
+    geometry_list += line_set_sequence
+    #----------------------------------------
+    return geometry_list
 
 def visualize_input_graph(mot_graph:NuscenesMotGraph):
     geometry_list = []
 
     nodes_3d_coord = mot_graph.graph_obj.x[:,:3]
     edge_indices= mot_graph.graph_obj.edge_index
-    # edge_labels= mot_graph.graph_obj.edge_labels
     edge_features = mot_graph.graph_obj.edge_attr
 
     # Color Points/Nodes

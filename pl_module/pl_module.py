@@ -10,26 +10,31 @@ from typing import Dict
 
 import pandas as pd
 import pytorch_lightning as pl
-from tensorboard import summary
 import torch
+import ujson as json
 from cv2 import log
 from datasets.nuscenes.reporting import save_to_json_file
 from datasets.nuscenes_mot_graph import NuscenesMotGraph
 from datasets.nuscenes_mot_graph_dataset import NuscenesMOTGraphDataset
 from datasets.NuscenesDataset import NuscenesDataset
 from model.mpn import MOTMPNet
+from tensorboard import summary
 from torch import optim as optim_module
 from torch.nn import functional as F
 from torch.optim import lr_scheduler as lr_sched_module
 from torch_geometric.data import DataLoader
 from tracker.mpn_tracker import NuscenesMPNTracker
-from utils.evaluation import (assign_definitive_connections,assign_definitive_connections_new, assign_track_ids,assign_track_ids_new,
-                              add_tracked_boxes_to_submission, prepare_for_submission)
+from utils.evaluation import (add_tracked_boxes_to_submission,
+                              assign_definitive_connections,
+                              assign_definitive_connections_new,
+                              assign_track_ids, assign_track_ids_new,
+                              prepare_for_submission)
 from utils.misc import save_pickle
 from utils.path_cfg import OUTPUT_PATH
-from visualization.visualize_graph import (visualize_eval_graph,
-                                           visualize_geometry_list,visualize_output_graph, visualize_eval_graph_new, visualize_output_graph_new)
-import ujson as json
+from visualization.visualize_graph import (
+    build_geometries_input_graph_w_pointcloud, visualize_eval_graph,
+    visualize_eval_graph_new, visualize_geometry_list, visualize_output_graph,
+    visualize_output_graph_new, build_geometries_input_graph_w_pointcloud_w_Bboxes)
 
 
 class MOTNeuralSolver(pl.LightningModule):
@@ -299,9 +304,11 @@ class MOTNeuralSolver(pl.LightningModule):
             # summary = add_tracked_boxes_to_submission(summary, mot_graph = mot_graph,use_gt=use_gt)
             
             if(self.hparams['eval_params']['visualize_graph']):
-                
+                geometry_list = build_geometries_input_graph_w_pointcloud(mot_graph, dataset.get_nuscenes_handle())
                 # geometry_list = visualize_eval_graph_new(mot_graph)
                 # geometry_list = visualize_eval_graph(mot_graph)
+                visualize_geometry_list(geometry_list)
+                geometry_list = build_geometries_input_graph_w_pointcloud_w_Bboxes(mot_graph, dataset.get_nuscenes_handle())
                 visualize_geometry_list(geometry_list)
                 if self.hparams['dataset_params']['use_gt_detections']:
                     geometry_list = visualize_output_graph_new(mot_graph)

@@ -385,6 +385,10 @@ def transform_boxes_from_world_2_sensor(boxes:List[Box],
         # assert ((rotation_absolute_distance)<1e-5)
 
 
-
+def get_lidar_pointlcoud_path(sample_token:str, nuscenes_handle:NuScenes):
+    sensor_channel = "LIDAR_TOP"
+    sd_table = get_sample_data_table(nuscenes_handle, sensor_channel, sample_token)
+    lidar_pcl_path = nuscenes_handle.get_sample_data_path(sd_table["token"])
+    return lidar_pcl_path
 
 
