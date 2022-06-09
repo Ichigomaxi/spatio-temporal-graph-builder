@@ -72,9 +72,9 @@ dataset_params:
   
 
 data_splits: # See nuscenes.datasplit()
-  # train: #['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']
-  # val: #['scene-0103', 'scene-0916']
-  # test: #[]
+  train: #['scene-0061', 'scene-0553', 'scene-0655', 'scene-0757', 'scene-0796', 'scene-1077', 'scene-1094', 'scene-1100']
+  val: #['scene-0103', 'scene-0916']
+  test: #[]
 
 eval_params:
   # Logging / Metrics reporting params
@@ -83,6 +83,6 @@ eval_params:
   visualize_graph : True
   save_graphs : False # only useful if want to visualize built graphs later on
   save_single_graph_submission: False # Only serves to test the json-saving pipeline
-  use_gt: False
+  use_gt: True
   tracking_threshold: 0.5
   # check_val_every_n_epoch: 9999

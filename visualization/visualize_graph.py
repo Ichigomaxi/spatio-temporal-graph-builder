@@ -14,7 +14,7 @@ from nuscenes.utils.data_classes import LidarPointCloud
 from nuscenes.nuscenes import NuScenes,Box
 from utils.nuscenes_helper_functions import get_sample_data_table,get_lidar_pointlcoud_path
 from pyquaternion import Quaternion
-
+from utility import get_box_centers
 import open3d as o3d
 from open3d import geometry
 BLACK = np.array([0,0,0])
@@ -180,6 +180,76 @@ def add_nuscenes_pointcloud(pointcloud_path:str, point_color:np.ndarray = GREY, 
     pointcloud_o3d.colors = o3d.utility.Vector3dVector(points_colors)
 
     return [pointcloud_o3d]
+
+# def build_geometries_GT_annotation_boxes(sample_token_boxes_list, edge_indices:np.ndarray, offset:int,edge_color:np.ndarray= BLUE, tracking_box_color:np.ndarray = GREEN):
+#     geometry_list = []
+#     #____________________________________
+#     offset = mot_graph.SPATIAL_SHIFT_TIMEFRAMES
+#     for i in range(mot_graph.max_frame_dist):
+#         boxes = mot_graph.graph_dataframe["boxes_dict"][i]
+#         line_set_bounding_boxes:List[Any] = \
+#             add_bounding_boxes(boxes, bbox_color=GREEN, offset=offset*i)
+#         geometry_list.extend(line_set_bounding_boxes)
+
+#     allcenters = []
+#     for i in range(len(sample_token_boxes_list)):
+#         sample_token, boxes = sample_token_boxes_list[i]
+        
+#         centers_list_i:np.ndarray = get_box_centers(boxes)
+#         centers_list_i:np.ndarray = centers_list_i.copy()
+#         t_centers_list_i:torch.Tensor = torch.from_numpy(centers_list_i)
+#         t_centers_list_i += torch.tensor([0,0, offset*i])
+#         allcenters.append(t_centers_list_i)
+
+#         line_set_bounding_boxes:List[Any] = \
+#             add_bounding_boxes(boxes, bbox_color = tracking_box_color, offset=offset*i)
+#         geometry_list.extend(line_set_bounding_boxes)
+
+#     t_centers_list = torch.cat(allcenters, dim = 0 )
+#     allcenters_shifted = t_centers_list
+#     # allcenters_shifted:torch.Tensor = torch.from_numpy(allcenters_shifted)
+#     edge_indices = torch.from_numpy(edge_indices)
+#     lineset = add_line_set(nodes= allcenters_shifted,
+#                         edge_indices= edge_indices, 
+#                         color= edge_color)
+
+#     geometry_list.extend(lineset)
+
+#     return geometry_list
+
+def build_geometries_tracking_boxes(sample_token_boxes_list, edge_indices:np.ndarray, offset:int,edge_color:np.ndarray= BLUE, tracking_box_color:np.ndarray = GREEN):
+    geometry_list = []
+    #----------------------------------------
+    # Include reference frame
+    mesh_frame = geometry.TriangleMesh.create_coordinate_frame(
+                size=5, origin=[0, 0, 0])  # create coordinate frame
+    geometry_list += [mesh_frame]
+    #____________________________________
+    allcenters = []
+    for i in range(len(sample_token_boxes_list)):
+        sample_token, boxes = sample_token_boxes_list[i]
+        
+        centers_list_i:np.ndarray = get_box_centers(boxes)
+        centers_list_i:np.ndarray = centers_list_i.copy()
+        t_centers_list_i:torch.Tensor = torch.from_numpy(centers_list_i)
+        t_centers_list_i += torch.tensor([0,0, offset*i])
+        allcenters.append(t_centers_list_i)
+
+        line_set_bounding_boxes:List[Any] = \
+            add_bounding_boxes(boxes, bbox_color = tracking_box_color, offset=offset*i)
+        geometry_list.extend(line_set_bounding_boxes)
+
+    t_centers_list = torch.cat(allcenters, dim = 0 )
+    allcenters_shifted = t_centers_list
+    # allcenters_shifted:torch.Tensor = torch.from_numpy(allcenters_shifted)
+    edge_indices = torch.from_numpy(edge_indices)
+    lineset = add_line_set(nodes= allcenters_shifted,
+                        edge_indices= edge_indices, 
+                        color= edge_color)
+
+    geometry_list.extend(lineset)
+
+    return geometry_list
 
 def build_geometries_input_graph_w_pointcloud_w_Bboxes(mot_graph:NuscenesMotGraph, nuscenes_handle: NuScenes):
     geometry_list = []
