@@ -147,14 +147,18 @@ def add_bounding_boxes(boxes:List[Box], bbox_color:np.ndarray = GREEN, offset:in
                 dim)
 
         line_set_bounding_box = o3d.geometry.LineSet.create_from_oriented_bounding_box(box3d)
+        # Set Colors
         line_set_bounding_box.paint_uniform_color(bbox_color)
-        line_set_bounding_box.translate(np.array([0,0,offset]))
+
         # Rotate by 90 degrees in z- axis
         rot_axis = 2 # Z-axis
         yaw = np.zeros(3)
         yaw[rot_axis] = np.pi*0.5
         rot_mat = geometry.get_rotation_matrix_from_xyz(yaw)
         line_set_bounding_box.rotate(rot_mat)
+        # Translate by offset
+        line_set_bounding_box.translate(np.array([0,0,offset]))
+        
         # Append to list
         line_set_bounding_boxes.append(line_set_bounding_box)
     
