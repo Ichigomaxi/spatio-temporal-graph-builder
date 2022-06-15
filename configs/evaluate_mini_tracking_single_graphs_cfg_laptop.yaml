@@ -54,9 +54,9 @@ dataset_params:
     spatial_knn_num_neighbors: 3
     temporal_knn_num_neighbors : 3
     spatial_shift_timeframes : 20
-    max_temporal_edge_length : 1 #Can be maximium of (max_frame_dist-1)
+    max_temporal_edge_length : 2 #Can be maximium of (max_frame_dist-1)
     
-  max_frame_dist: 2 # Maximum number of frames contained in each graph sampled graph
+  max_frame_dist: 12 # Maximum number of frames contained in each graph sampled graph
   # Node Features
   node_feature_mode : "centers_and_time" # determines the included node features 
   # Edge Features
@@ -83,6 +83,6 @@ eval_params:
   visualize_graph : True
   save_graphs : False # only useful if want to visualize built graphs later on
   save_single_graph_submission: False # Only serves to test the json-saving pipeline
-  use_gt: False
+  use_gt: True
   tracking_threshold: 0.5
   # check_val_every_n_epoch: 9999
