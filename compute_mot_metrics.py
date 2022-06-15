@@ -15,16 +15,16 @@ with open(config_path, 'r') as _f:
 result_path_ = "/media/HDD2/students/maximilian/spatio-temporal-gnn/experiments/" 
 
 # experiment = "val_centerpoint_CBMOT_3frames"
-experiment = "06-08__11-10_evaluation"
+experiment = "06-10__00-19_evaluation"
 local_tracking_filepath = "val_tracking.json"
 
-result_path_ = osp.join(result_path_,experiment, local_tracking_filepath)
+result_path_ = osp.join(result_path_, experiment, local_tracking_filepath)
 
 eval_set_ = "val"
 
 output_dir_=  '/media/HDD2/students/maximilian/spatio-temporal-gnn/mot_metric_afterprocessing/'
 # output_dir_=  '/media/HDD2/students/maximilian/eagermot/'
-output_dir_ = osp.join(output_dir_,experiment, eval_set_)
+output_dir_ = osp.join(output_dir_, experiment, eval_set_)
 
 
 # version_ = 'v1.0-mini'
