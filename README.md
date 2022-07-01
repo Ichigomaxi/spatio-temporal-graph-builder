@@ -102,8 +102,18 @@ CBMOT uses the **centerpoint_voxel_1440** detections. Download from [here](https
 
 ## Training
 
+Base command for training with base config `config/tracking_cfg.yaml`
+```bash
+python train.py
+```
+
+Training with overloaded config `configs/tracking_example_config.yaml`
+```bash
+python train.py with configs/tracking_example_config.yaml
+```
 
 ## Tracking Inference/Validation
+
 
 
 ## Visualization
