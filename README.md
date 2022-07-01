@@ -113,7 +113,18 @@ python train.py with configs/tracking_example_config.yaml
 ```
 
 ## Tracking Inference/Validation
+After training our model we want to perform tracking and validate our results.
+For evaluation we use the following commands
 
+Base command for eval with base config `configs/evaluate_mini_tracking_cfg.yaml`
+```bash
+python evaluate.py
+```
+
+Evaluate with overloaded config `configs/evaluate_example_cfg.yaml`
+```bash
+python evaluate.py with configs/evaluate_example_cfg.yaml
+```
 
 
 ## Visualization
