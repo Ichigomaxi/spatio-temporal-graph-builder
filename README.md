@@ -1,9 +1,20 @@
 # spatio-temporal graph builer
 ## Installation
+We provide 
 
+```bash
+# using pip
+pip install -r pip_requirements.txt
+```
+
+```bash
+# using Conda
+conda create --name <env_name> --file requirements.txt
+```
 Best Practice:
 Create a Conda environment
 Then continue with the installation of the required packages.
+
 
 1)
 Please install the devkit for the nuscenes dataset.
@@ -102,8 +113,15 @@ CBMOT uses the **centerpoint_voxel_1440** detections. Download from [here](https
 ## Arquitecture
 We build on top of the architecture established by [Braso et al. - Learning a Neural Solver for Multiple Object Tracking](https://github.com/dvl-tum/mot_neural_solver).
 
-Therefore, we use sacre
+Therefore, we use sacred to manage the trainings and pytorch lightning to manage the boiler-plate code for the training and the inference.
 
+## Checkpoints
+We provide the Checkpoints under [here](https://syncandshare.lrz.de/getlink/fi7wXvdpbz2rvhrubn8urQbq/).
+
+The checkpoint we use can be downloaded [here](https://syncandshare.lrz.de/dl/fi7wXvdpbz2rvhrubn8urQbq/results/experiments/05-08_19:58_train_w_default_config/model_checkpoints/epoch=48-step=263080.ckpt).
+
+It is under: 
+- Home/master_thesis_M_Listl/results/experiments/05-08_19:58_train_w_default_config/model_checkpoints
 
 ## Training
 
