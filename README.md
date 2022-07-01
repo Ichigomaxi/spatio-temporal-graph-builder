@@ -99,6 +99,11 @@ Download Center Point Detections from [here](https://github.com/tianweiy/CenterP
 
 CBMOT uses the **centerpoint_voxel_1440** detections. Download from [here](https://drive.google.com/drive/folders/1FOfCe9nWQrySUx42PlZyaKWAK2Or0sZQ).
 
+## Arquitecture
+We build on top of the architecture established by [Braso et al. - Learning a Neural Solver for Multiple Object Tracking](https://github.com/dvl-tum/mot_neural_solver).
+
+Therefore, we use sacre
+
 
 ## Training
 
@@ -126,5 +131,14 @@ Evaluate with overloaded config `configs/evaluate_example_cfg.yaml`
 python evaluate.py with configs/evaluate_example_cfg.yaml
 ```
 
+We have also developed a script which allows to test our tracking method on a graph-by-graph basis.
+```bash
+python evaluate_single_graphs.py
+```
+
 
 ## Visualization
+
+
+
+
