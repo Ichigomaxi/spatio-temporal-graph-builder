@@ -1,21 +1,22 @@
 # spatio-temporal graph builer
-## Installation
-We provide 
+## Installation with conda or pip
+We provide the requirements for a pip or for a conda installation.
+All requirement files are in the requirements-folder of this repo.
 
 ```bash
 # using pip
-pip install -r pip_requirements.txt
+pip install -r ./requirements/pip_requirements.txt
 ```
 
 ```bash
 # using Conda
-conda create --name <env_name> --file requirements.txt
+conda create --name <env_name> --file ./requirements/requirements.txt
 ```
 Best Practice:
 Create a Conda environment
 Then continue with the installation of the required packages.
 
-
+## Installation from source
 1)
 Please install the devkit for the nuscenes dataset.
 Currently using version nuscenes-devkit 1.1.9
