@@ -71,7 +71,8 @@ Important files associated with this:
 - [graph helper functions](./utils/graph.py)
 
 ### 4. Global Tracking ###
-
+We perform window shifting to track a whole scene.
+An overview over the algorithm is explained in the [thesis](./documentation/220614_RAIStudentThesis_v12_final.pdf).
 
 Important files associated with this:
 - [Tracking module (with window shifting)](./tracker/mpn_tracker.py)
