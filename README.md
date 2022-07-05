@@ -26,10 +26,18 @@ Important files associated with this:
 
 ### 2. Spatio-Temporal Graph Neural Network ### 
 Important files associated with this:
-- 
+- [linear layers](./model/mlp.py)
+- [graph neural network](./model/mpn.py)
+- [pytorch lightning module (wraps around torch model and handels training and tracking)](./pl_module/pl_module.py)
+- [graph neural network](./model/mpn.py)
+
 ### 3. Greedy Rounding (Greedy projection) ### 
+Important files associated with this:
+- [helper functions for 'local' tracking within graph](./utils/evaluation.py) look at function `project_graph_model_output`
+- [Greedy Rounding module from \[Braso et al.\] ](./tracker/projectors.py)
 
 ### 4. Global Tracking ###
+- [Tracking module (with window shifting)](./tracker/mpn_tracker.py)
 
 ## Installation with conda or pip
 We provide the requirements for a pip or for a conda installation.
