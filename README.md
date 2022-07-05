@@ -18,6 +18,29 @@ Our pipeline is composed of 4 parts.
 4. Global Tracking
 
 ### 1. Spatio-Temporal Graph Builder ###
+Get familiar with the **nuscenes_mot_graph** class and its attribute the **graph object** _(nuscenes_mot_graph.graph_obj)_.
+
+A **nuscenes_mot_graph** contains most information connected to the spatio-temporal graph.
+
+A graph object (often denomenated graph_obj) is a class that inherits from the [data class](https://pytorch-geometric.readthedocs.io/en/latest/modules/data.html#torch_geometric.data.Data) from [pytorch-geometric](https://pytorch-geometric.readthedocs.io/en/latest/index.html).
+It contains all bare bone information of the graph in a defined way, such that the node and edge features can be processed in a unified way by the pytorch model.
+The most important attributes of the graph are:
+- node features: graph_obj.x
+- edge features: graph_obj.edge_attr
+- edge indices: graph_obj.edge_index
+
+The remainig attributes can be seen in `def construct_graph_object(self,node_feature_mode="centers_and_time", edge_feature_mode="edge_type"):` - [nuscenes_mot_graph](./datasets/nuscenes_mot_graph.py) 
+```python
+# Build Data-graph object for pytorch model
+        self.graph_obj = Graph(x = t_node_features,
+                               edge_attr = t_edge_feats,
+                               edge_index = t_edge_ixs,
+                               temporal_edges_mask = t_temporal_edge_mask,
+                               timeframe_number = t_frame_number,
+                               contains_dummies = bool_contains_dummies          
+                               )
+```
+
 Important files associated with this:
 - [nuscenes_mot_graph](./datasets/nuscenes_mot_graph.py)
 - [nuscenes_mot_graph_dataset](nuscenes_mot_graph_dataset.py)
@@ -32,11 +55,25 @@ Important files associated with this:
 - [graph neural network](./model/mpn.py)
 
 ### 3. Greedy Rounding (Greedy projection) ### 
+- - - -
+_**Attention!!!:**_
+
+In parallel to the undirected graph, the undirected graphs edges, edge predictions are transformed to a directed graph.
+This is Important to use the Rounding method from Braso et al.
+The edges, edge predictions and other attribute begin with `temporal_directed_...` before their name.:
+- `temporal_directed_edge_preds`
+- `temporal_directed_edge_indices`
+This transformation is done in function `to_directed_temporal_graph` of [graph helper functions](./utils/graph.py).
+- - - -
 Important files associated with this:
 - [helper functions for 'local' tracking within graph](./utils/evaluation.py) look at function `project_graph_model_output`
 - [Greedy Rounding module from \[Braso et al.\] ](./tracker/projectors.py)
+- [graph helper functions](./utils/graph.py)
 
 ### 4. Global Tracking ###
+
+
+Important files associated with this:
 - [Tracking module (with window shifting)](./tracker/mpn_tracker.py)
 
 ## Installation with conda or pip
