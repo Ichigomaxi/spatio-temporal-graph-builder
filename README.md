@@ -1,4 +1,18 @@
 # spatio-temporal graph builer
+
+## Arquitecture
+
+![hustlin_erd](./spatio-temporal-graph-builer/documentation/pipeline_v5.pdf)
+<embed src="/documentation/pipeline_v5.pdf" type="application/pdf">
+ 
+![Alt text](./documentation/pipeline_v5-1.png?raw=true "Optional Title")
+
+![hustlin_erd](./spatio-temporal-graph-builer/documentation/pipeline_v5-1.png)
+
+We build on top of the architecture established by [Braso et al. - Learning a Neural Solver for Multiple Object Tracking](https://github.com/dvl-tum/mot_neural_solver).
+
+Therefore, we use sacred to manage the trainings and pytorch lightning to manage the boiler-plate code for the training and the inference.
+
 ## Installation with conda or pip
 We provide the requirements for a pip or for a conda installation.
 All requirement files are in the requirements-folder of this repo.
@@ -111,13 +125,7 @@ Download Center Point Detections from [here](https://github.com/tianweiy/CenterP
 
 CBMOT uses the **centerpoint_voxel_1440** detections. Download from [here](https://drive.google.com/drive/folders/1FOfCe9nWQrySUx42PlZyaKWAK2Or0sZQ).
 
-## Arquitecture
-<embed src="/documentation/pipeline_v5.pdf" type="application/pdf">
- 
 
-We build on top of the architecture established by [Braso et al. - Learning a Neural Solver for Multiple Object Tracking](https://github.com/dvl-tum/mot_neural_solver).
-
-Therefore, we use sacred to manage the trainings and pytorch lightning to manage the boiler-plate code for the training and the inference.
 
 ## Checkpoints
 We provide the Checkpoints under [here](https://syncandshare.lrz.de/getlink/fi7wXvdpbz2rvhrubn8urQbq/).
