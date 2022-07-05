@@ -1,6 +1,6 @@
 # spatio-temporal graph builer
 
-## Arquitecture
+## Arquitecture 
 
 <!-- ![hustlin_erd](./spatio-temporal-graph-builer/documentation/pipeline_v5.pdf)
 <embed src="/documentation/pipeline_v5.pdf" type="application/pdf"> -->
@@ -9,7 +9,27 @@
 
 We build on top of the architecture established by [Braso et al. - Learning a Neural Solver for Multiple Object Tracking](https://github.com/dvl-tum/mot_neural_solver).
 
-Therefore, we use sacred to manage the trainings and pytorch lightning to manage the boiler-plate code for the training and the inference.
+Therefore, we use [SACRED](https://github.com/IDSIA/sacred/tree/master) to manage the executions (read config, terminal commands) and [pytorch lightning](https://www.pytorchlightning.ai/) to manage the boiler-plate code for the training and the inference.
+
+Our pipeline is composed of 4 parts.
+1. Spatio-Temporal Graph Builder
+2. Spatio-Temporal Graph Neural Network
+3. Greedy Rounding (Greedy projection)
+4. Global Tracking
+
+### 1. Spatio-Temporal Graph Builder ###
+Important files associated with this:
+- [nuscenes_mot_graph](./datasets/nuscenes_mot_graph.py)
+- [nuscenes_mot_graph_dataset](nuscenes_mot_graph_dataset.py)
+- [helper functions graph ](./graph/graph_generation.py)
+- [helper functions groundtruth_generation](./groundtruth_generation/nuscenes_create_gt.py)
+
+### 2. Spatio-Temporal Graph Neural Network ### 
+Important files associated with this:
+- 
+### 3. Greedy Rounding (Greedy projection) ### 
+
+### 4. Global Tracking ###
 
 ## Installation with conda or pip
 We provide the requirements for a pip or for a conda installation.
