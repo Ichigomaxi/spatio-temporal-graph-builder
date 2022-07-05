@@ -2,12 +2,10 @@
 
 ## Arquitecture
 
-![hustlin_erd](./spatio-temporal-graph-builer/documentation/pipeline_v5.pdf)
-<embed src="/documentation/pipeline_v5.pdf" type="application/pdf">
- 
-![Alt text](./documentation/pipeline_v5-1.png?raw=true "Optional Title")
-
-![hustlin_erd](./spatio-temporal-graph-builer/documentation/pipeline_v5-1.png)
+<!-- ![hustlin_erd](./spatio-temporal-graph-builer/documentation/pipeline_v5.pdf)
+<embed src="/documentation/pipeline_v5.pdf" type="application/pdf"> -->
+![pipeline_v5](./documentation/pipeline_v5-1.png?raw=true "Visualization of our Pipeline.")
+<!-- ![hustlin_erd](./spatio-temporal-graph-builer/documentation/pipeline_v5-1.png) -->
 
 We build on top of the architecture established by [Braso et al. - Learning a Neural Solver for Multiple Object Tracking](https://github.com/dvl-tum/mot_neural_solver).
 
