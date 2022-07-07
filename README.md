@@ -1,6 +1,6 @@
 # spatio-temporal graph builer
 
-## Arquitecture 
+## Architecture 
 
 <!-- ![hustlin_erd](./spatio-temporal-graph-builer/documentation/pipeline_v5.pdf)
 <embed src="/documentation/pipeline_v5.pdf" type="application/pdf"> -->
