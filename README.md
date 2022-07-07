@@ -284,6 +284,14 @@ For visualization we use the following script: [visualize_eval_graphs.py](./spat
 python visualize_eval_graphs.py
 ```
 
+### 3D Visualization of graphs on laptop (Mini-Nuscenes) ###
+The following script visualizes the input graph (spatio-temporal graph) and the ideal output graph (visualization of edge labels).
+[visualize_spatio_temporal_graph.py](./spatio-temporal-graph-builer/visualize_spatio_temporal_graph.py)
+
+### 3D Visualization of single graphs on laptop (Mini-Nuscenes, Thesis style) ###
+We can also run [evaluate_single_graphs.py](./spatio-temporal-graph-builer/pl_module/pl_module.py) locally on computer with a screen, to visualize our matchings.
+Our pretrained GNN can be loaded into CPU memory. However, our local computer could only load the mini-nuscenes set.
+To activate this function set ['eval_params']['visualize_graph']= True in the config file.
 ```python
 if(self.hparams['eval_params']['visualize_graph']):
                 geometry_list = build_geometries_input_graph_w_pointcloud(mot_graph, dataset.get_nuscenes_handle())
@@ -297,11 +305,11 @@ if(self.hparams['eval_params']['visualize_graph']):
                     # geometry_list = visualize_output_graph(mot_graph)
                     visualize_geometry_list(geometry_list)
 ```
+This results in the following picture, which can be seen in the Thesis as well.
 
+![Input Graph](./documentation/input_scene_0103_sample_0_3e8750f331d7499e9b5123e9eb70f2e2_w_BBoxes_pose_1.png?raw=true "Visualization of Comparison.")
 
-### 3D Visualization of graphs on laptop (Mini-Nuscenes) ###
-The following script visualizes the input graph (spatio-temporal graph) and the ideal output graph (visualization of edge labels).
-[visualize_spatio_temporal_graph.py](./spatio-temporal-graph-builer/visualize_spatio_temporal_graph.py)
+![Inferred Graph](./documentation/scene_0103_sample_0_3e8750f331d7499e9b5123e9eb70f2e2_pose_1.png?raw=true "Visualization of inferred graph.")
 
 ### 3D Visualization of Comparison between tracking results ours vs other methods (Mini-Nuscenes, CenterPoint detections) ###
 The following script visualizes both tracked objects from our and from another method's results-file.
@@ -309,5 +317,3 @@ The following script visualizes both tracked objects from our and from another m
 
 This results in the following image:
 ![Comparison image](./documentation/scene_0_frame_0_pose_15_modified.png?raw=true "Visualization of Comparison.")
-
-
