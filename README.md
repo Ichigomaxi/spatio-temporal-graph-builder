@@ -200,6 +200,27 @@ It is under:
 - Home/master_thesis_M_Listl/results/experiments/05-08_19:58_train_w_default_config/model_checkpoints
 
 ## Training
+- - - -
+_**Attention!!!:**_
+In SACRED we define a base config in the script, as seen here:
+```python
+from sacred import SETTINGS
+SETTINGS.CONFIG.READ_ONLY_CONFIG=False
+
+ex = Experiment()
+
+ex.add_config('configs/tracking_cfg.yaml') # Set Base config 
+```
+
+In order to avoid changing the script everytime we want to use another config, we can overload the config using terminal commands.
+However, this means that if you add new keywords to a config file. **It should be included in the base config!**
+
+We add the word `with` to the terminal command and the path to the new config-file that we want to use.  
+```bash
+python example_script.py with new_config.yaml
+```
+
+- - - -
 
 Base command for training with base config `config/tracking_cfg.yaml`
 ```bash
@@ -211,9 +232,20 @@ Training with overloaded config `configs/tracking_example_config.yaml`
 python train.py with configs/tracking_example_config.yaml
 ```
 
+
 ## Tracking Inference/Validation
 After training our model we want to perform tracking and validate our results.
-For evaluation we use the following commands
+For testing the tracking pipeline within a single graph we have use the `evaluate_single_graphs.py` [script](./evaluate_single_graphs.py). (Architecture part 1 - 3, no global tracking) 
+For testing the overall tracking performance we the `evaluate.py` [script](./evaluate.py). The global tracking yields a yaml-file which contains the tracking results in the official nuscenes format. In addition, the evaluation of the results is done by the [official nuscenes evaluation script](https://github.com/nutonomy/nuscenes-devkit/tree/master/python-sdk/nuscenes/eval/tracking). This computes the MOT-metrics such as AMOTA, AMOTP
+
+### Local Tracking/ Tracking within a single spatio-temporal Graph ###
+We have developed a script which allows to test our tracking method on a graph-by-graph basis. (Architecture part 1 - 3, no global tracking) 
+```bash
+python evaluate_single_graphs.py
+```
+
+### Global Tracking ###
+(Architecture part 1 - 4, with global tracking) 
 
 Base command for eval with base config `configs/evaluate_mini_tracking_cfg.yaml`
 ```bash
@@ -224,12 +256,6 @@ Evaluate with overloaded config `configs/evaluate_example_cfg.yaml`
 ```bash
 python evaluate.py with configs/evaluate_example_cfg.yaml
 ```
-
-We have also developed a script which allows to test our tracking method on a graph-by-graph basis.
-```bash
-python evaluate_single_graphs.py
-```
-
 
 ## Visualization
 
