@@ -258,7 +258,56 @@ python evaluate.py with configs/evaluate_example_cfg.yaml
 ```
 
 ## Visualization
+In our repo we use 3D Visualizations to check the functionality of our pipeline. (based on open3D)
+However, most of the time the whole nuscenes dataset will only be available at a remote workstation. In addition, computing visualization on the workstation and sending them over an ssh connection is challenging.
+
+Therefore, most visualization script are run locally on a laptop which only visualizes a small subset of the entire nuscenes dataset (mini-nuscenes).
+Some scripts run the complete pipeline on the laptop with a pretrained GNN. Other scripts rely on mot_graph-objects that are saved in a pickle-file (.pkl).
+
+Nevertheless, it is possible to compute 2D visualization from the nuscenes-devkit on a workstation and visualize them on a local computer. It works over jupyter-notebooks. As seen [here.](./visualize_nuscenes_scenes_for_dev.ipynb)
+
+### 3D Visualization of single graphs from workstation on laptop ###
+In [evaluate_single_graphs.py](./spatio-temporal-graph-builer/pl_module/pl_module.py) we can save the mot_graphs which contain the edge predictions in a pickle file.
+If we set the config ['eval_params']['save_graphs']=True.
+```python
+# save objects for visualization
+        if(self.hparams['eval_params']['save_graphs']):
+            os.makedirs(output_files_dir, exist_ok=True) # Make sure dir exists
+            # Save in pickle format
+            pickle_file_path = osp.join(output_files_dir,"inferred_mot_graphs.pkl")
+            with open(pickle_file_path, 'wb') as f:
+                torch.save(inferred_mot_graphs,f, pickle_protocol = 4)
+```
+Afterwards the pickle-file can be moved to a local computer with a screen, to visualize the results.
+For visualization we use the following script: [visualize_eval_graphs.py](./spatio-temporal-graph-builer/visualize_eval_graphs.py)
+```bash
+python visualize_eval_graphs.py
+```
+
+```python
+if(self.hparams['eval_params']['visualize_graph']):
+                geometry_list = build_geometries_input_graph_w_pointcloud(mot_graph, dataset.get_nuscenes_handle())
+                # geometry_list = visualize_eval_graph_new(mot_graph)
+                # geometry_list = visualize_eval_graph(mot_graph)
+                visualize_geometry_list(geometry_list)
+                geometry_list = build_geometries_input_graph_w_pointcloud_w_Bboxes(mot_graph, dataset.get_nuscenes_handle())
+                visualize_geometry_list(geometry_list)
+                if self.hparams['dataset_params']['use_gt_detections']:
+                    geometry_list = visualize_output_graph_new(mot_graph)
+                    # geometry_list = visualize_output_graph(mot_graph)
+                    visualize_geometry_list(geometry_list)
+```
 
 
+### 3D Visualization of graphs on laptop (Mini-Nuscenes) ###
+The following script visualizes the input graph (spatio-temporal graph) and the ideal output graph (visualization of edge labels).
+[visualize_spatio_temporal_graph.py](./spatio-temporal-graph-builer/visualize_spatio_temporal_graph.py)
+
+### 3D Visualization of Comparison between tracking results ours vs other methods (Mini-Nuscenes, CenterPoint detections) ###
+The following script visualizes both tracked objects from our and from another method's results-file.
+[visualize_submissions_comparison_centerpoint.py](./spatio-temporal-graph-builer/visualize_submissions_comparison_centerpoint.py)
+
+This results in the following image:
+![Comparison image](./documentation/scene_0_frame_0_pose_15_modified.png?raw=true "Visualization of Comparison.")
 
 
