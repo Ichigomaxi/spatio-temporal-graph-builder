@@ -231,6 +231,96 @@ Training with overloaded config `configs/tracking_example_config.yaml`
 ```bash
 python train.py with configs/tracking_example_config.yaml
 ```
+### Config ###
+
+```yaml
+# Config for modes from the nuscenes split
+train_dataset_mode: "train"
+eval_dataset_mode: "val"
+test_dataset_mode: 
+```
+
+```yaml
+gpu_settings:
+  device_type: "gpu"
+  # Specify which GPUs to use
+  device_id: [1] # Specifically takes the gpu associated with cuda:1 
+  torch_device: 'cuda:1'
+```
+
+```yaml
+train_params:
+  batch_size: 4
+  num_epochs: 200
+  optimizer:
+    type: Adam
+    args:
+      lr: 0.0001
+      weight_decay: 0.001
+
+  lr_scheduler:
+    type:
+    args:
+      step_size: 7
+      gamma: 0.5
+```
+
+```yaml
+train_params:
+  num_workers: 0 # Used for dataloaders
+  save_every_epoch: True # Determines if every a checkpoint will be saved for every epoch
+  save_epoch_start: 1 # If the arg above is set to True, determines the first epoch after which we start saving ckpts
+  tensorboard: True
+  num_save_top_k: 2
+  include_custom_checkpointing : True
+  include_early_stopping : True
+  loss_params:
+    weighted_loss: True
+```
+
+```yaml
+dataset_params:
+  # Preprocessing ParamsL
+  load_valid_sequence_sample_list : True
+  # If the above is true then specify the path to the pickle files
+  # Must be absolutepath until now
+  # if mode not train or val then sequence_sample_list_train_path will be loaded into Dataset object
+  sequence_sample_list_train_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_nuscenes/sequence_sample_list_train.pkl' 
+  sequence_sample_list_val_path : '/media/HDD2/students/maximilian/spatio-temporal-gnn/dataset/preprocess_dataset_nuscenes/sequence_sample_list_val.pkl'
+
+  # Dataset Processing params:
+  dataset_version: 'v1.0-trainval'
+  dataroot : '/media/HDD2/Datasets/nuscenes2'
+  is_windows_path : False
+
+  # Filter Parameter
+  # Contains a list of nuscenes class labels.
+  # Only detections from these clases will be loaded for the graph
+  # filterBoxes_categoryQuery: ['vehicle.car']  
+  filterBoxes_categoryQuery: ['vehicle.car'] # ['vehicle.car', 'vehicle.bicycle','vehicle.bus', 'vehicle.motorcycle','human.pedestrian', 'vehicle.trailer', 'vehicle.truck']
+
+  # Graph Construction Parameters
+  graph_construction_params:
+    spatial_knn_num_neighbors: 4
+    temporal_knn_num_neighbors : 4
+    spatial_shift_timeframes : 20
+    max_temporal_edge_length : 2
+    
+  max_frame_dist: 3 # Maximum number of frames contained in each graph sampled graph
+  # Node Features
+  node_feature_mode : "centers_and_time" # determines the included node features 
+  # Edge Features
+  edge_feature_mode : "edge_type" # determines the included edge features 
+  # Edge_Label Type
+  label_type: "binary" # "binary" or "multiclass"
+  # Choose how Graph construction should be handled
+  adapt_knn_param: False # if number of objects is below the KNN-Param then K
+
+  # Data Augmentation Params
+  augment: False # Determines whether data augmentation is performed
+```
+
+
 
 
 ## Tracking Inference/Validation
@@ -256,6 +346,39 @@ Evaluate with overloaded config `configs/evaluate_example_cfg.yaml`
 ```bash
 python evaluate.py with configs/evaluate_example_cfg.yaml
 ```
+
+##
+
+```yaml
+# Config for modes from the nuscenes split
+# train_dataset_mode: "train"
+# eval_dataset_mode: "val"
+test_dataset_mode: "mini_val"
+```
+
+
+
+```yaml
+dataset_params:
+  # Preprocessing Params
+  load_valid_sequence_sample_list : True
+
+  # Detection Params:
+  use_gt_detections: True # If True loaded detections will equal the sample_annotations from the trainval-set 
+
+```
+
+```yaml
+eval_params:
+  # Logging / Metrics reporting params
+  tensorboard: True
+  save_submission: True
+  use_gt: False # Use GT labels as edge_predictions instead of infering them
+  tracking_threshold: 0.5
+```
+
+
+
 
 ## Visualization
 In our repo we use 3D Visualizations to check the functionality of our pipeline. (based on open3D)
