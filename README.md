@@ -338,8 +338,23 @@ dataset_params:
   # Data Augmentation Params
   augment: False # Determines whether data augmentation is performed
 ```
-
-
+- `load_valid_sequence_sample_list`: Determines if a list of valid sample_tokens can be loaded from a given path. This is allows to bypass the filtering at the beginning. 
+- `sequence_sample_list_train_path`: Path to pickle file with list of valid sample_tokens for training split. Is only used if `load_valid_sequence_sample_list` is true!
+- `sequence_sample_list_val_path`: Path to pickle file with list of valid sample_tokens for validation split. Is only used if `load_valid_sequence_sample_list` is true!
+- `dataset_version`: string with version of nuscenes. Important for nuscenes handle `nusc`.
+- `dataroot`: Path to nuscenes dataset Important for nuscenes handle `nusc`.
+- `is_windows_path`: obsolete parameter
+- `filterBoxes_categoryQuery`: List of strings. Determines the classes of the objects that will be used for training and tracking. All other objects will be filtered out.
+- `spatial_knn_num_neighbors`: Determines number of spatial neighbors per node.
+- `temporal_knn_num_neighbors`: Determines number of temporal neighbors per node per l-th iteration (1,2,..., max_temporal_edge_length (\beta)).
+- `spatial_shift_timeframes`: Determines the length by which the different timeframes are shifted.
+- `max_temporal_edge_length`: Determines number of timeframes that the temporal edges can skip. (skip connections)
+- `max_frame_dist`: Determines number of timeframes per graph
+- `node_feature_mode`: Determines the node features used for the message passing step
+- `edge_feature_mode`: Determines the edge features used for the message passing step
+- `label_type`: This is a deprecated config. It should remain "binary".
+- `adapt_knn_param`: If True it allows to process graphs with a number of objects less than k_{temp} or k_{spatial}.
+- `augment`: obsolete
 
 
 ## Tracking Inference/Validation
@@ -363,9 +378,12 @@ eval_params:
   use_gt: True
   tracking_threshold: 0.5
 ```
-
 `use_gt`: Use Ground truth edge labels instead of edge predictions for tracking
-
+`debbuging_mode`: If true then only processes the first 5 graphs.
+`visualize_graph`: If true then it visualizes the Graph in 3D.
+`save_graphs`: If true then the inferred mot_graphs are saved in a pickle file. This is used for visualizing these graphs on a local machine.
+`save_single_graph_submission`: obsolete param.
+`tracking_threshold` : Determines the threshold used in the Greedy Rounding method. Typically  0.5 because it is binary classification.
 
 ### Global Tracking ###
 (Architecture part 1 - 4, with global tracking) 
@@ -383,35 +401,27 @@ python evaluate.py with configs/evaluate_example_cfg.yaml
 #### Config Params ####
 
 ```yaml
-# Config for modes from the nuscenes split
-# train_dataset_mode: "train"
-# eval_dataset_mode: "val"
 test_dataset_mode: "mini_val"
 ```
-
-
+test_dataset_mode: Determines the datasplit that is used for the tracking and the final evaluation. This is similar to `train_dataset_mode`.
 
 ```yaml
 dataset_params:
   # Preprocessing Params
-  load_valid_sequence_sample_list : True
-
+  filter_for_buildable_sample_frames : True
   # Detection Params:
   use_gt_detections: True # If True loaded detections will equal the sample_annotations from the trainval-set 
-
+  det_file_path: "/media/HDD2/Datasets/nuscenes_EagerMOT_detections/centerpoint_3Ddetections/val/infos_val_10sweeps_withvelo_filter_True.json"
 ```
+- `filter_for_buildable_sample_frames`: Determines if the sample frames should be filtered for ones which do not allow the building of valid spatio-temporal graphs.
+- `use_gt_detections`: If True then groundtruth annotations (3D bounding boxes) are used as 3D object detections. If `use_gt_detections`==False then detections from `det_file_path` are loaded.
+- `det_file_path`: Path to file with 3D object detections in official nuscenes submission style.
 
 ```yaml
 eval_params:
-  # Logging / Metrics reporting params
-  tensorboard: True
   save_submission: True
-  use_gt: False # Use GT labels as edge_predictions instead of infering them
-  tracking_threshold: 0.5
 ```
-
-
-
+- `save_submission`: If true then the tracked object detections (with their Trackl-IDs) are saved in a .json-file. The summary/submission is in the official nuscenes submission style. It allows evaluation afterwards with the nuscenes eval-script or direct submission to nuscenes server.
 
 ## Visualization
 In our repo we use 3D Visualizations to check the functionality of our pipeline. (based on open3D)
