@@ -231,14 +231,16 @@ Training with overloaded config `configs/tracking_example_config.yaml`
 ```bash
 python train.py with configs/tracking_example_config.yaml
 ```
-### Config ###
+### Config Params ###
 
 ```yaml
 # Config for modes from the nuscenes split
 train_dataset_mode: "train"
 eval_dataset_mode: "val"
-test_dataset_mode: 
 ```
+- `train_dataset_mode`: decides the data split for the training split e.g {"train", "val", "test", "train_detect", "train_track","mini_train", "mini_val"}
+- `eval_dataset_mode`: same as `train_dataset_mode` but for the validation split
+
 
 ```yaml
 gpu_settings:
@@ -247,6 +249,9 @@ gpu_settings:
   device_id: [1] # Specifically takes the gpu associated with cuda:1 
   torch_device: 'cuda:1'
 ```
+`device_type`: determines processing unit to perform pytorch/tensor computations, e.g {"cpu", "gpu"}
+`device_id`: is obsolete
+`torch_device`: Very important! Determines on which torch.device the pytorch computations are performed e.g {"cpu", "cuda","cuda:0",...}
 
 ```yaml
 train_params:
@@ -264,6 +269,11 @@ train_params:
       step_size: 7
       gamma: 0.5
 ```
+- `batch_size`: Determines mini-batch size. Number of Graphs used per iteration step in optimization
+- `num_epochs`: Determines maximum number of epochs
+- `optimizer`: Contains Parameters for optimizer
+- `lr_scheduler`: Attention!! Contains Parameters for LR lr_scheduler. However it does not work until now.
+
 
 ```yaml
 train_params:
@@ -277,6 +287,15 @@ train_params:
   loss_params:
     weighted_loss: True
 ```
+- `num_workers`: Parameters that derives from a pytorchlightning functionality. It does not work until now. So it is always set to 0!
+- `tensorboard`: Determines if the logger module is initiated to monitor the training over tensorboard
+- `num_save_top_k`: Determines how many of the best performing training checkpoints should be saved. 
+- `include_custom_checkpointing`: Determines if training should include a custom function to save every n-th epoch. (Custom callback)
+- `save_every_epoch`: Only works if `include_custom_checkpointing`==True!
+- `save_epoch_start`: Only works if `include_custom_checkpointing`==True!
+- `include_early_stopping`: Determines if training should be stopped preemptively with early-stopping callback from pytorchlightning
+- `weighted_loss`: Determines if Loss is weighted to inprove label imbalance (more negatives than positives)
+
 
 ```yaml
 dataset_params:
@@ -334,6 +353,20 @@ We have developed a script which allows to test our tracking method on a graph-b
 python evaluate_single_graphs.py
 ```
 
+#### Config Params ####
+```yaml
+eval_params:
+  debbuging_mode : True
+  visualize_graph : False
+  save_graphs : True
+  save_single_graph_submission: False
+  use_gt: True
+  tracking_threshold: 0.5
+```
+
+`use_gt`: Use Ground truth edge labels instead of edge predictions for tracking
+
+
 ### Global Tracking ###
 (Architecture part 1 - 4, with global tracking) 
 
@@ -347,7 +380,7 @@ Evaluate with overloaded config `configs/evaluate_example_cfg.yaml`
 python evaluate.py with configs/evaluate_example_cfg.yaml
 ```
 
-##
+#### Config Params ####
 
 ```yaml
 # Config for modes from the nuscenes split
