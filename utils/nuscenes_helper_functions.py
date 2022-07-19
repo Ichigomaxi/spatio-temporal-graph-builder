@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List, Tuple
 from nuscenes.nuscenes import NuScenes
 import numpy as np
 import torch
@@ -6,6 +6,7 @@ from datasets.nuscenes.classes import ALL_NUSCENES_CLASS_NAMES, id_from_name
 from nuscenes.utils.geometry_utils import transform_matrix
 from pyquaternion import Quaternion
 from nuscenes.nuscenes import Box
+from utility import is_same_instance
 
 def get_all_samples_2_list(nusc:NuScenes, scene_token:str) -> List[str]:
     # init List
@@ -385,6 +386,82 @@ def transform_boxes_from_world_2_sensor(boxes:List[Box],
         # assert ((rotation_absolute_distance)<1e-5)
 
 
+def get_lidar_pointlcoud_path(sample_token:str, nuscenes_handle:NuScenes):
+    sensor_channel = "LIDAR_TOP"
+    sd_table = get_sample_data_table(nuscenes_handle, sensor_channel, sample_token)
+    lidar_pcl_path = nuscenes_handle.get_sample_data_path(sd_table["token"])
+    return lidar_pcl_path
+
+def select_all_boxes_from_k_sample(sample_token:str, k:int , nuscenes_handle:NuScenes, frames_to_detections): # :Dict[str:List[Box]]
+    boxes_list = []
+    current_sample_token = sample_token
+    for i in range(k):
+        current_boxes = frames_to_detections[current_sample_token]
+        boxes_list.append( (current_sample_token , current_boxes) )
+        previous_token = current_sample_token
+        current_sample_token = skip_sample_token(current_sample_token,0,nuscenes_handle)
+        if current_sample_token == previous_token:
+            print("reached end of scene, returned empty list")
+            return []
+    
+    return boxes_list
+
+def find_correspondences_between_tracking_boxes_several_frames(boxes_list: Tuple[str, List[Box]]):
+    correspondences = {}
+
+    for i in (len(boxes_list) - 1):
+        sample_token_i, boxes_i = boxes_list[i]
+        sample_token_j, boxes_j = boxes_list[i+1]
+        all_boxes, edge_indices = find_correspondences_between_tracking_boxes(boxes_i,boxes_j)
+        items = {}
+        items["corresponding_token"] = sample_token_j
+        items["all_boxes"] = all_boxes
+        items["edge_indices"] = edge_indices
+        correspondences[sample_token_i] = items
+
+    return correspondences
+
+def find_correspondences_between_tracking_boxes(boxes_i:List[Box], boxes_j:List[Box]):
+    """
+    """
+    all_boxes = []
+    edge_indices = []
+
+    for local_index_a,box_a in enumerate(boxes_i):
+        tracking_id_a = box_a.label
+        for local_index_b,box_b in enumerate(boxes_j):
+            tracking_id_b = box_b.label
+            if tracking_id_a == tracking_id_b:
+                # Form edge
+                edge_indices.append( [local_index_a,local_index_b + len(boxes_i)] )
+    all_boxes.extend(boxes_i)
+    all_boxes.extend(boxes_j)
+
+    edge_indices = np.asarray(edge_indices)
+    if edge_indices.shape[0] != 2:
+        edge_indices = edge_indices.T
+    return all_boxes, edge_indices
+
+def find_correspondences_between_GT_annotation_boxes(boxes_i:List[Box], boxes_j:List[Box],nuscenes_handle:NuScenes):
+    """
+    """
+    all_boxes = []
+    edge_indices = []
+
+    for local_index_a,box_a in enumerate(boxes_i):
+        str_node_a_sample_annotation = box_a.token
+        for local_index_b,box_b in enumerate(boxes_j):
+            str_node_b_sample_annotation = box_b.token
+            if is_same_instance(nuscenes_handle,
+                        str_node_a_sample_annotation,
+                        str_node_b_sample_annotation):
+                # Form edge
+                edge_indices.append( [local_index_a,local_index_b + len(boxes_i)] )
+    all_boxes.extend(boxes_i)
+    all_boxes.extend(boxes_j)
 
 
-
+    edge_indices = np.asarray(edge_indices)
+    if edge_indices.shape[0] != 2:
+        edge_indices = edge_indices.T
+    return all_boxes, edge_indices
