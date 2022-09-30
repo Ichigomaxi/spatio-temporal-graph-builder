@@ -1,6 +1,7 @@
 # Spatio-Temporal Graph Neural Networks for Multiple Object Tracking
 
 ## Citations
+If you want to use this code base please consider to cite us.
 
 > [**Spatio-Temporal Graph Neural Networks for Multiple Object Tracking**](https://www.researchgate.net/publication/364039769_Spatio-Temporal_Graph_Neural_Networks_for_Multiple_Object_Tracking),
 > Maximilian Listl,
