@@ -192,7 +192,7 @@ pip install ujson
 We perform tracking on the [nuscenes](https://www.nuscenes.org/) dataset.
 For training and inference we use the provided ground truth annotations (3D bounding boxes) as object detections.
 
-The whole arquive with results, model weights can be downloaded from [here](https://1drv.ms/u/s!AsPr8vsMUksPgqJit41KPY7nsEXJbg?e=AcUIHq) or alternatively [here](https://drive.google.com/file/d/1mqAoCC5KZtjjY5XquqM12VXZpaU3-uhq/view?usp=sharing).
+The whole archive with results, model weights can be downloaded from [here](https://1drv.ms/u/s!AsPr8vsMUksPgqJit41KPY7nsEXJbg?e=AcUIHq) or alternatively [here](https://drive.google.com/file/d/1mqAoCC5KZtjjY5XquqM12VXZpaU3-uhq/view?usp=sharing).
 
 For our final experiments we compare our method to other state of the art methods, namely [EagerMOT](https://github.com/aleksandrkim61/EagerMOT) and [CBMOT](https://github.com/cogsys-tuebingen/CBMOT) on publicly available object detections given by [CenterPoint](https://github.com/tianweiy/CenterPoint).
 
