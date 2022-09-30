@@ -483,3 +483,57 @@ The following script visualizes both tracked objects from our and from another m
 
 This results in the following image:
 ![Comparison image](./documentation/scene_0_frame_0_pose_15_modified.png?raw=true "Visualization of Comparison.")
+
+## Acknowlegements and Ressources
+This project would not be possible without multiple great open source codebases.
+The most important for this thesis project are listed below.
+
+* [mot_neural_solver](https://github.com/dvl-tum/mot_neural_solver)
+* [EagerMOT](https://github.com/aleksandrkim61/EagerMOT)
+* [CBMOT](https://github.com/cogsys-tuebingen/CBMOT)
+* [CenterPoint](https://github.com/tianweiy/CenterPoint)
+
+Please, also consider citing them if you use them for benchmarking purposes:
+```
+    @InProceedings{braso_2020_CVPR,
+    author={Guillem Brasó and Laura Leal-Taixé},
+    title={Learning a Neural Solver for Multiple Object Tracking},
+    booktitle = {The IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+    month = {June},
+    year = {2020}
+}
+```
+```
+@inproceedings{Kim21ICRA,
+  title     = {EagerMOT: 3D Multi-Object Tracking via Sensor Fusion},
+  author    = {Kim, Aleksandr, O\v{s}ep, Aljo\v{s}a and Leal-Taix{'e}, Laura},
+  booktitle = {IEEE International Conference on Robotics and Automation (ICRA)},
+  year      = {2021}
+}
+```
+
+> [**Score refinement for confidence-based 3D multi-object tracking**](https://arxiv.org/abs/2107.04327),            
+> Nuri Benbarka, Jona Schröder, Andreas Zell,        
+> *arXiv technical report ([arXiv 2107.04327](https://arxiv.org/abs/2107.04327))*  
+
+    @article{benbarka2021score,
+        title={Score refinement for confidence-based 3D multi-object tracking},
+        author={Benbarka, Nuri and Schr{\"o}der, Jona and Zell, Andreas},
+        journal={arXiv preprint arXiv:2107.04327},
+        year={2021}
+    }
+
+> [**Center-based 3D Object Detection and Tracking**](https://arxiv.org/abs/2006.11275),            
+> Tianwei Yin, Xingyi Zhou, Philipp Kr&auml;henb&uuml;hl,        
+> *arXiv technical report ([arXiv 2006.11275](https://arxiv.org/abs/2006.11275))*  
+
+
+
+    @article{yin2021center,
+      title={Center-based 3D Object Detection and Tracking},
+      author={Yin, Tianwei and Zhou, Xingyi and Kr{\"a}henb{\"u}hl, Philipp},
+      journal={CVPR},
+      year={2021},
+    }
+
+Also, please check out the related work cited in my [thesis](./documentation/220614_RAIStudentThesis_v12_final.pdf) for other interesting research that might interest you.
