@@ -1,5 +1,16 @@
 # Spatio-Temporal Graph Neural Networks for Multiple Object Tracking
 
+## Citations
+
+> [**Spatio-Temporal Graph Neural Networks for Multiple Object Tracking**](https://www.researchgate.net/publication/364039769_Spatio-Temporal_Graph_Neural_Networks_for_Multiple_Object_Tracking),
+> Maximilian Listl,
+        
+        @article{listl2022spatio,
+        author = {Listl, Maximilian and Ercelik, Emec},
+        year = {2022},
+        title = {Spatio-Temporal Graph Neural Networks for Multiple Object Tracking}
+        }
+        
 ## Architecture 
 
 <!-- ![hustlin_erd](./spatio-temporal-graph-builer/documentation/pipeline_v5.pdf)
