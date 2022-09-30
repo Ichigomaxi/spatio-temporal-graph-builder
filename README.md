@@ -192,6 +192,8 @@ pip install ujson
 We perform tracking on the [nuscenes](https://www.nuscenes.org/) dataset.
 For training and inference we use the provided ground truth annotations (3D bounding boxes) as object detections.
 
+The whole arquive with results, model weights can be downloaded from [here](https://1drv.ms/u/s!AsPr8vsMUksPgqJit41KPY7nsEXJbg?e=AcUIHq) or alternatively [here](https://drive.google.com/file/d/1mqAoCC5KZtjjY5XquqM12VXZpaU3-uhq/view?usp=sharing).
+
 For our final experiments we compare our method to other state of the art methods, namely [EagerMOT](https://github.com/aleksandrkim61/EagerMOT) and [CBMOT](https://github.com/cogsys-tuebingen/CBMOT) on publicly available object detections given by [CenterPoint](https://github.com/tianweiy/CenterPoint).
 
 To perform the experiments
@@ -201,15 +203,11 @@ Download Center Point Detections from [here](https://github.com/tianweiy/CenterP
 
 CBMOT uses the **centerpoint_voxel_1440** detections. Download from [here](https://drive.google.com/drive/folders/1FOfCe9nWQrySUx42PlZyaKWAK2Or0sZQ).
 
-
-
 ## Checkpoints
-We provide the Checkpoints under [here](https://syncandshare.lrz.de/getlink/fi7wXvdpbz2rvhrubn8urQbq/).
+We provide the Checkpoints in our archive folder provided [here](https://1drv.ms/u/s!AsPr8vsMUksPgqJit41KPY7nsEXJbg?e=AcUIHq) or alternatively [here](https://drive.google.com/file/d/1mqAoCC5KZtjjY5XquqM12VXZpaU3-uhq/view?usp=sharing)
 
-The checkpoint we use can be downloaded [here](https://syncandshare.lrz.de/dl/fi7wXvdpbz2rvhrubn8urQbq/results/experiments/05-08_19:58_train_w_default_config/model_checkpoints/epoch=48-step=263080.ckpt).
-
-It is under: 
-- Home/master_thesis_M_Listl/results/experiments/05-08_19:58_train_w_default_config/model_checkpoints
+The checkpoint we use can be downloaded under :
+- **master_thesis_M_Listl/results/experiments/05-08_19:58_train_w_default_config/model_checkpoints/epoch=48-step=263080.ckpt**
 
 ## Training
 - - - -
