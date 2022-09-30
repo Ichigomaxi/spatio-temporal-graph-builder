@@ -1,4 +1,4 @@
-# spatio-temporal graph builer
+# Spatio-Temporal Graph Neural Networks for Multiple Object Tracking
 
 ## Architecture 
 
